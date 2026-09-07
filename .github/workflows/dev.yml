@@ -1,21 +1,12 @@
-name: Release
+name: Dev Build
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version, for example v0.1.0'
-        required: true
-        type: string
-
-permissions:
-  contents: write
 
 jobs:
-  release:
+  dev:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -24,12 +15,8 @@ jobs:
       - name: Resolve version
         shell: pwsh
         run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $version = "${{ inputs.version }}"
-          } else {
-            $version = $env:GITHUB_REF_NAME
-          }
-          "G25_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $shortSha = $env:GITHUB_SHA.Substring(0, 7)
+          "G25_VERSION=dev-$shortSha" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Build x64
         run: |
           cmake --preset vs2022-x64
@@ -53,13 +40,11 @@ jobs:
           choco install innosetup --no-progress -y
           $env:G25_PACKAGE_DIR = (Resolve-Path "dist\g25-w11-driver-$env:G25_VERSION").Path
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\g25-w11-driver.iss
-      - name: Publish GitHub release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $assets = @(
-            "dist/g25-w11-driver-$env:G25_VERSION.zip",
-            "dist/g25-w11-driver-$env:G25_VERSION-setup.exe"
-          )
-          gh release create $env:G25_VERSION $assets --target $env:GITHUB_SHA --title $env:G25_VERSION --notes-file dist\CHANGELOG.md
+      - name: Upload dev artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: g25-w11-driver-${{ env.G25_VERSION }}
+          path: |
+            dist/g25-w11-driver-${{ env.G25_VERSION }}.zip
+            dist/g25-w11-driver-${{ env.G25_VERSION }}-setup.exe
+            dist/CHANGELOG.md

@@ -3,6 +3,10 @@
 CI builds and tests the project on Windows x64, Windows x86 and Linux for the
 portable protocol core.
 
+Development builds run on every push to `main` from
+`.github/workflows/dev.yml`. They upload workflow artifacts named
+`g25-w11-driver-dev-<sha>` without creating a GitHub release.
+
 Nightly builds run from `.github/workflows/nightly.yml` every night and can also
 be started manually from GitHub Actions. The workflow publishes a moving
 `nightly` prerelease containing:

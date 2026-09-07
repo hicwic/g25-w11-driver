@@ -251,6 +251,7 @@ enregistre les cles DirectInput dans `HKCU`, lance G25 Control et ajoute son
 demarrage automatique a la session Windows. La desinstallation restaure les
 cles sauvegardees par `Register-G25FF.ps1`.
 
-Le pipeline publie aussi une nightly prerelease `nightly`. Les versions stables
-sont declenchees par un tag `v*`, par exemple `v0.1.0`, avec changelog et
-binaires generes automatiquement. Voir [release process](docs/release.md).
+Le pipeline publie aussi des artefacts `dev-<sha>` sur chaque push `main` et
+une nightly prerelease `nightly`. Les versions stables sont declenchees par un
+tag `v*`, par exemple `v0.1.0`, avec changelog et binaires generes
+automatiquement. Voir [release process](docs/release.md).

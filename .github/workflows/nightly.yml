@@ -20,16 +20,18 @@ jobs:
           cmake --preset vs2022-x64
           cmake --build --preset release --parallel
           ctest --preset release
+          cmake --install build/vs2022-x64 --config Release --prefix dist/stage-x64
       - name: Build x86
         run: |
           cmake --preset vs2022-x86
           cmake --build --preset release-x86 --parallel
           ctest --preset release-x86
+          cmake --install build/vs2022-x86 --config Release --prefix dist/stage-x86
       - name: Package
         shell: pwsh
         run: |
           $version = "nightly-$env:GITHUB_RUN_NUMBER"
-          .\scripts\Package-Release.ps1 -Version $version -Build64 build\vs2022-x64 -Build32 build\vs2022-x86
+          .\scripts\Package-Release.ps1 -Version $version -Build64 dist\stage-x64\bin -Build32 dist\stage-x86\bin
           .\scripts\Generate-Changelog.ps1 -Version $version -OutputPath dist\CHANGELOG.md
       - name: Build installer
         shell: pwsh

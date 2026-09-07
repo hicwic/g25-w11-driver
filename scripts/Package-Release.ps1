@@ -61,7 +61,7 @@ Copy-Item -LiteralPath (Join-Path $repoRoot 'README.md') -Destination (Join-Path
 Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $packageRoot 'LICENSE')
 Copy-Item -LiteralPath (Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $packageRoot 'THIRD_PARTY_NOTICES.md')
 Copy-Item -LiteralPath (Join-Path $repoRoot 'assets\g25-control.ico') -Destination (Join-Path $packageRoot 'assets\g25-control.ico')
-Copy-Item -LiteralPath (Join-Path $repoRoot 'docs\*') -Destination (Join-Path $packageRoot 'docs') -Recurse
+Copy-Item -Path (Join-Path $repoRoot 'docs\*') -Destination (Join-Path $packageRoot 'docs') -Recurse
 
 $manifest = [ordered]@{
     name = 'g25-w11-driver'
