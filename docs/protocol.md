@@ -1,229 +1,199 @@
-# Protocole Logitech G25 — analyse avant implémentation
+# Logitech G25 Protocol Notes
 
-Analyse commencée le 6 septembre 2026 et complétée par les essais matériels du
-7 septembre. Ce document distingue les faits présents dans les sources des
-résultats observés, consignés dans `validation.md`.
+Analysis started on 6 September 2026 and was completed with hardware tests on
+7 September 2026. This document separates information taken from source code
+from behavior observed on real hardware, which is recorded in
+`docs/validation.md`.
 
-## Sources et réutilisation
+## Sources And Reuse
 
-Les révisions étudiées sont figées pour rendre les commandes auditables :
+The source revisions below are pinned so the command encoding remains
+auditable:
 
-* **new-lg4ff**, `2092db19f7b40854e0427a1b2e39eda9f8d0c3cd` :
-  [hid-lg4ff.c][kernel], [hid-lg.c][hid], [hid-ids.h][ids]. C'est un module
-  Linux HID, dérivé de hid-logitech : identification, changements de mode,
-  réglages sysfs, traduction des effets Linux, quatre slots matériels,
-  ordonnanceur hrtimer et mélange des effets. Les types périodiques sont
-  calculés sur l'hôte et alimentent la force constante. Le fichier protocole
-  porte `SPDX-License-Identifier: GPL-2.0-or-later`, avec les copyrights
-  de Simon Wood (2010) et Bernat Arlandis (2019).
-* **lg4ff_userspace**, `d81ccb5d23716fa859b5f72d7e26d4ac8e6ba67d` :
+- **new-lg4ff**, `2092db19f7b40854e0427a1b2e39eda9f8d0c3cd`:
+  [hid-lg4ff.c][kernel], [hid-lg.c][hid], [hid-ids.h][ids]. This is a Linux
+  HID module derived from `hid-logitech`: identification, mode switching, sysfs
+  settings, Linux FFB translation, four hardware slots, hrtimer scheduling and
+  effect mixing. Periodic effects are synthesized on the host and feed the
+  constant-force slot. The source carries `SPDX-License-Identifier:
+  GPL-2.0-or-later`, with copyrights by Simon Wood (2010) and Bernat Arlandis
+  (2019).
+- **lg4ff_userspace**, `d81ccb5d23716fa859b5f72d7e26d4ac8e6ba67d`:
   [configure.c][configure], [switch_mode.c][switch], [force_feedback.c][ff],
-  [driver_loops.c][loops], [rd_g25][descriptor]. Port C incomplet utilisant
-  HIDAPI (hidraw ou libusb), pthreads, événements evdev et `/dev/uinput`.
-  Son fichier LICENSE contient la GPL v2. Son README précise que le mode G25
-  n'a été essayé que sur un G29 émulant le G25 : ce n'est pas une validation
-  de toutes les révisions de G25 réelles.
+  [driver_loops.c][loops], [rd_g25][descriptor]. This is an incomplete C port
+  using HIDAPI, pthreads, evdev events and `/dev/uinput`. Its license file is
+  GNU GPL v2. Its README says the G25 mode was only tested on a G29 emulating a
+  G25, which is not validation for every real G25 revision.
 
-Le prototype reprend en C++ les encodages et le découpage des entrées, avec
-attribution dans le code et dans THIRD_PARTY_NOTICES.md, sous GPL-2.0-only.
-Les parties Linux (uinput, ioctl evdev, sysfs, hrtimer) ne sont pas compilables
-sous Windows. Elles ne sont pas embarquées. Le moteur complet de new-lg4ff
-reste la référence de la traduction DirectInput, notamment pour la synthèse
-temporelle et les effets conditionnels.
+This prototype adapts the command encoding and native input layout in C++ with
+attribution in the source files and in `THIRD_PARTY_NOTICES.md`, under
+GPL-2.0-only. Linux-specific pieces such as uinput, evdev ioctls, sysfs and
+hrtimmer scheduling are not embedded. `new-lg4ff` remains the main reference for
+DirectInput translation, especially time synthesis and condition effects.
 
-Les sources Linux amont correspondantes sont
+Upstream Linux references are
 [drivers/hid/hid-lg4ff.c](https://github.com/torvalds/linux/blob/v6.12/drivers/hid/hid-lg4ff.c),
-[hid-lg.c](https://github.com/torvalds/linux/blob/v6.12/drivers/hid/hid-lg.c) et
+[hid-lg.c](https://github.com/torvalds/linux/blob/v6.12/drivers/hid/hid-lg.c)
+and
 [hid-ids.h](https://github.com/torvalds/linux/blob/v6.12/drivers/hid/hid-ids.h).
-Les références précises ci-dessous pointent vers le fork effectivement lu.
+The links at the bottom point to the exact fork revisions that were read.
 
-## Identité USB et modes
+## USB Identity And Modes
 
-VID Logitech : `046d`. Attention : PID signifie ici Product ID USB,
-pas la classe HID Physical Interface Device utilisée pour le FFB standard.
+Logitech VID is `046d`. In this project, PID means USB Product ID, not the HID
+Physical Interface Device class used by standard HID FFB.
 
-| PID | Mode annoncé | Traitement du prototype |
+| PID | Reported Mode | Project Behavior |
 | --- | --- | --- |
-| `c294` | Driving Force / Formula EX, mode de compatibilité possible | Listé ; bascule uniquement si révision reconnue G25 |
-| `c298` | Driving Force Pro, autre mode possible du G25 | Même précaution |
-| `c299` | G25 natif, également émulable par G27/G29 | Entrées natives ; écritures limitées aux G25 reconnus |
-| `c29b` | G27 natif | Diagnostic uniquement, aucun envoi G25 |
+| `c294` | Driving Force / Formula EX, possible compatibility mode | Listed; switched only when the revision identifies a G25 |
+| `c298` | Driving Force Pro, another possible G25 compatibility mode | Same caution |
+| `c299` | Native G25 layout, also emulatable by G27/G29 | Native inputs; writes only for recognized G25 revisions |
+| `c29b` | Native G27 | Diagnostic only; no G25 commands |
 
-Sources : [constantes USB][ids], `lg4ff_multimode_wheels`,
-`lg4ff_main_checklist`, `lg4ff_identify_multimode_wheel` dans [hid-lg4ff.c][kernel].
-Le G25 est identifié par `(bcdDevice & 0xff00) == 0x1200`, **après** exclusion
-du G27 `(bcdDevice & 0xfff0) == 0x1230`. Le G29 a notamment les signatures
-`(rev & 0xfff8) == 0x1350` et `(rev & 0xff00) == 0x8900`.
-Un PID de compatibilité seul ne prouve donc jamais la présence d'un G25.
-Windows expose cette révision dans `HIDD_ATTRIBUTES.VersionNumber`.
+Sources: [USB constants][ids], `lg4ff_multimode_wheels`,
+`lg4ff_main_checklist` and `lg4ff_identify_multimode_wheel` in
+[hid-lg4ff.c][kernel].
 
-Le passage en G25 natif envoie `F8 10 00 00 00 00 00`
-(`lg4ff_mode_switch_ext16_g25`). Le passage en DFP utilise `F8 01 ...`.
-Le G25 ne supporte pas les retours arbitraires entre modes : le code Linux
-refuse notamment de revenir vers un PID inférieur après passage natif.
-Un débranchement/rebranchement peut être nécessaire pour revenir au mode
-de démarrage. La famille de commandes `F8 09 ...` concerne d'autres modèles
-(G27/DFGT/G29) et n'est pas envoyée au G25 réel.
+A G25 is identified by `(bcdDevice & 0xff00) == 0x1200`, after excluding G27
+`(bcdDevice & 0xfff0) == 0x1230`. Known G29 signatures include
+`(rev & 0xfff8) == 0x1350` and `(rev & 0xff00) == 0x8900`. A compatibility PID
+alone never proves that the device is a G25. Windows exposes the revision as
+`HIDD_ATTRIBUTES.VersionNumber`.
 
-Une bascule peut invalider le handle et changer PID/descripteur. `native`
-envoie la commande puis ferme le handle ; relancer `list` et `monitor`
-après réénumération. Le CLI ne choisit jamais arbitrairement un autre volant
-après une déconnexion. `list`, `info` et `monitor` ne basculent pas le mode
-silencieusement ; un mode incompatible produit une instruction explicite.
+Switching to native G25 mode sends `F8 10 00 00 00 00 00`
+(`lg4ff_mode_switch_ext16_g25`). Switching to DFP mode uses `F8 01 ...`. The G25
+does not support arbitrary back-and-forth mode changes; Linux refuses to switch
+back to a lower PID after native mode. Unplugging/replugging may be required to
+return to the startup mode. The `F8 09 ...` command family belongs to other
+models such as G27/DFGT/G29 and is not sent to a real G25.
 
-## Rapports HID natifs
+Mode switching can invalidate the handle and change PID/descriptor. `native`
+sends the command and closes the handle; run `list` and `monitor` again after
+USB re-enumeration. The CLI never silently switches modes from `list`, `info` or
+`monitor`.
 
-Le descripteur [rd_g25][descriptor] annonce une collection Joystick
-(page `01`, usage `04`), sans Report ID explicite :
+## Native HID Reports
 
-| Type | Charge utile USB | Buffer HID Windows |
+The [rd_g25][descriptor] descriptor exposes a Joystick collection
+(page `01`, usage `04`) without an explicit Report ID:
+
+| Type | USB Payload | Windows HID Buffer |
 | --- | --- | --- |
-| Input | 11 octets, 88 bits | 12 octets, premier octet `00` |
-| Output | 7 octets propriétaires | 8 octets, premier octet `00` |
-| Feature | 144 octets propriétaires | 145 octets, premier octet `00` |
+| Input | 11 bytes, 88 bits | 12 bytes, first byte `00` |
+| Output | 7 vendor bytes | 8 bytes, first byte `00` |
+| Feature | 144 vendor bytes | 145 bytes, first byte `00` |
 
-Ces tailles sont vérifiées avec `HidP_GetCaps` avant le décodage/envoi.
-Les usages et domaines logiques sont également contrôlés. Un descripteur
-différent doit être étudié, et non interprété avec des offsets approximatifs.
-Le parseur Windows `HidP_GetUsageValue/GetUsages` est exercé sur des buffers
-locaux à bit unique pour vérifier que les offsets correspondent au décodeur.
-Ces buffers de vérification ne sont jamais envoyés au volant.
-Les Feature reports ne sont ni lus ni écrits : leur sémantique n'est pas
-établie par les sources étudiées.
+Sizes are checked with `HidP_GetCaps` before decoding or sending. Usages and
+logical ranges are checked too. Unknown descriptors must be analyzed instead of
+being interpreted with approximate offsets. The Windows parser
+`HidP_GetUsageValue/GetUsages` is exercised on local single-bit buffers to
+verify that offsets match the decoder; those buffers are never sent to the
+wheel. Feature reports are not read or written because their meaning is not
+established by the studied sources.
 
-Les modes de compatibilité ont d'autres usages Output : `01:03` pour Driving
-Force, `01:02` pour DFP dans `df_rdesc_fixed/dfp_rdesc_fixed` de [hid-lg.c][hid].
-Le filtre de sortie traite ces modes séparément, toujours avec exactement sept
-octets et Report ID 0. Une variante DF-EX publiée par lg4ff_userspace annonce
-plus de sorties (capture d'un G29) : elle n'est pas acceptée pour une bascule
-G25. Les corrections Linux concernent aussi les pédales séparées cachées dans
-les usages constructeur du descripteur original ; elles ne sont pas présentes
-automatiquement dans le pilote HID Windows. Cela renforce l'intérêt du mode natif.
+Compatibility modes expose other output usages: `01:03` for Driving Force and
+`01:02` for DFP in `df_rdesc_fixed/dfp_rdesc_fixed` from [hid-lg.c][hid]. The
+output filter treats those modes separately, always with seven bytes and Report
+ID 0.
 
-Offsets ci-dessous dans la **charge utile**, sans le `00` de Windows ; bits
-numérotés depuis le bit faible du premier octet :
+Offsets below are in the **USB payload**, without the leading Windows `00`. Bits
+are numbered from the least significant bit of the first byte:
 
-| Bits | Champ | Domaine / usage |
+| Bits | Field | Range / Meaning |
 | --- | --- | --- |
-| 0–3 | POV | 0–7 directions, 8 repos ; autres valeurs réservées |
-| 4–22 | Boutons | 19 bits, page `09`, usages 1–19 |
-| 23–25 | Constructeur | Conservés comme données brutes |
-| 26–39 | Volant X | 14 bits, 0–16383 ; `(p[3] >> 2) \| (p[4] << 6)` |
-| 40–47 | Accélérateur Z | `p[5]`, 255 relâché, 0 enfoncé |
-| 48–55 | Frein Rz | `p[6]`, même convention |
-| 56–63 | Embrayage Y | `p[7]`, même convention |
-| 64–87 | Constructeur | `p[8..10]`, conservés bruts |
+| 0-3 | POV | 0-7 directions, 8 idle, other values reserved |
+| 4-22 | Buttons | 19 bits, page `09`, usages 1-19 |
+| 23-25 | Vendor | Kept as raw bits |
+| 26-39 | Wheel X | 14 bits, 0-16383; `(p[3] >> 2) | (p[4] << 6)` |
+| 40-47 | Throttle Z | `p[5]`, 255 released, 0 pressed |
+| 48-55 | Brake Rz | `p[6]`, same convention |
+| 56-63 | Clutch Y | `p[7]`, same convention |
+| 64-87 | Vendor | `p[8..10]`, kept raw |
 
-Découpage repris de `uinput_g25_g27_emit` dans [driver_loops.c][loops].
-Les pédales sont distinctes dans le rapport natif ; leur combinaison dans
-Linux est une transformation logicielle. `monitor` indique un angle estimé
-à partir de la plage donnée par `--range` (900 par défaut, hypothèse affichée).
-Le protocole étudié ne fournit pas de lecture de la plage courante. Après
-`range 540`, utiliser `monitor --range 540`. Ce réglage d'affichage ne change
-pas le matériel et ne constitue pas une calibration physique.
+The layout comes from `uinput_g25_g27_emit` in [driver_loops.c][loops]. Pedals
+are separate in the native report; combined pedals are a software transform.
+`monitor` prints an estimated angle from the range passed through `--range`
+(900 by default). The studied protocol does not provide a verified readback for
+the current steering range.
 
 ### Shifter
 
-[Logitech documente][gears] les rapports 1–6 et R comme boutons DirectX
-8–14 (numérotation à partir de zéro), soit boutons affichés 9–15.
-Le CLI expose cette interprétation **indicative**, plus tous les boutons,
-le POV et les octets constructeur. Plusieurs bits de rapport actifs donnent
-`?`, aucun donne `N`. Cette correspondance issue du Profiler XP/Vista doit
-être confrontée au HID brut sans LGS ; Linux ne nomme pas les rapports de
-boîte, il transmet les boutons. Aucun seuil analogique de shifter n'est
-inventé. Le mode séquentiel reste observable par les boutons, sans déduire
-un rapport de boîte absolu. Ne pas confondre les mappings G25 et G27/G29.
+[Logitech documents][gears] gears 1-6 and R as DirectX buttons 8-14 using
+zero-based numbering, which appear as displayed buttons 9-15. The CLI exposes
+that mapping as **indicative** and also prints all buttons, POV and vendor bytes.
+Several active gear bits produce `?`; none produce `N`. This XP/Vista Profiler
+mapping must be compared with raw HID input without LGS. Linux passes buttons
+and does not name gears.
 
-## Commandes émises
+## Commands Sent
 
-Toutes les lignes de cette table représentent les **sept octets Logitech**.
-Le transport Windows ajoute `00` devant, envoie avec `WriteFile` et vérifie
-le nombre d'octets transférés. Aucun repli automatique vers WinUSB,
-`SetFeature` ou une commande différente.
+Rows in this table are the **seven Logitech payload bytes**. The Windows
+transport prepends `00`, sends with `WriteFile`, and checks the transferred byte
+count. There is no automatic fallback to WinUSB, `SetFeature` or another
+command.
 
-| Fonction | Charge utile | Source exacte dans [hid-lg4ff.c][kernel] |
+| Function | Payload | Exact Source In [hid-lg4ff.c][kernel] |
 | --- | --- | --- |
-| Mode G25 | `F8 10 00 00 00 00 00` | `lg4ff_mode_switch_ext16_g25`, `lg4ff_get_mode_switch_command` |
-| Plage | `F8 81 LL HH 00 00 00` | `lg4ff_set_range_g25` |
-| 900° | `F8 81 84 03 00 00 00` | même fonction ; 900 = `0384` |
-| 540° | `F8 81 1C 02 00 00 00` | même fonction ; 540 = `021C` |
-| Stop quatre slots | `F3 00 00 00 00 00 00` | `lg4ff_stop_effects` |
-| Désactiver autocentre | `F5 00 00 00 00 00 00` | `lg4ff_set_autocenter_default`, magnitude 0 |
-| Constante slot 0 | `11 00 XX 00 00 00 00` | `lg4ff_update_slot`, branche `FF_CONSTANT` |
-| Spring slot 1 | `21 0B D1 D2 KK SS CL` | même fonction, branche `FF_SPRING` |
-| Damper slot 2 | `41 0C K1 S1 K2 S2 CL` | même fonction, branche `FF_DAMPER` |
-| Friction slot 3 | `81 0E K1 S1 K2 S2 CL` | même fonction, branche `FF_FRICTION` |
-| Arrêt slots 0/1/2/3 | `13` / `23` / `43` / `83`, puis zéros | opération stop de `lg4ff_update_slot` |
+| G25 mode | `F8 10 00 00 00 00 00` | `lg4ff_mode_switch_ext16_g25`, `lg4ff_get_mode_switch_command` |
+| Range | `F8 81 LL HH 00 00 00` | `lg4ff_set_range_g25` |
+| 900 degrees | `F8 81 84 03 00 00 00` | same function; 900 = `0384` |
+| 540 degrees | `F8 81 1C 02 00 00 00` | same function; 540 = `021C` |
+| Stop four slots | `F3 00 00 00 00 00 00` | `lg4ff_stop_effects` |
+| Disable autocenter | `F5 00 00 00 00 00 00` | `lg4ff_set_autocenter_default`, magnitude 0 |
+| Constant slot 0 | `11 00 XX 00 00 00 00` | `lg4ff_update_slot`, `FF_CONSTANT` branch |
+| Spring slot 1 | `21 0B D1 D2 KK SS CL` | same function, `FF_SPRING` branch |
+| Damper slot 2 | `41 0C K1 S1 K2 S2 CL` | same function, `FF_DAMPER` branch |
+| Friction slot 3 | `81 0E K1 S1 K2 S2 CL` | same function, `FF_FRICTION` branch |
+| Stop slots 0/1/2/3 | `13` / `23` / `43` / `83`, then zeros | stop operation in `lg4ff_update_slot` |
 
-La plage acceptée est 40–900° inclus (`lg4ff_devices`). Le prototype refuse
-les valeurs hors domaine au lieu de les corriger silencieusement. Une écriture
-réussie confirme le transfert Windows, pas un accusé de réception firmware
-ni la mesure des nouvelles butées.
+Accepted range is 40-900 degrees inclusive (`lg4ff_devices`). The prototype
+rejects out-of-range values instead of silently clamping them. A successful
+write confirms Windows transfer, not firmware acknowledgement or a measured
+stop position.
 
 ### Force Feedback
 
-L'octet 0 associe le masque des slots dans le demi-octet haut et l'opération
-dans le bas : `1` télécharge/joue, `C` met à jour, `3` arrête. Les quatre
-slots ont les masques `10`, `20`, `40`, `80`. Le moteur new-lg4ff gère plus
-d'effets logiciels que de slots matériels ; il mélange les constantes et
-les formes périodiques et affecte les conditions aux slots disponibles.
+Byte 0 combines the slot mask in the high nibble and the operation in the low
+nibble: `1` downloads/plays, `C` updates, `3` stops. The four hardware slot
+masks are `10`, `20`, `40`, `80`. `new-lg4ff` supports more software effects
+than hardware slots by mixing constants and periodic effects, then assigning
+condition effects to available slots.
 
-Constante : `XX = (force_signée_16_bits + 32768) >> 8`.
-`80` est neutre, `00` et `FF` sont proches des extrêmes, **pas des arrêts**.
-Le test fixe la force à +9830, donc `A6`, environ 30 % de l'échelle positive
-de commande, pendant une seconde au maximum prévue. Cette proportion n'est
-pas une mesure de couple. Aucune option CLI ne permet une force maximale.
+Constant force uses `XX = (signed_16_bit_force + 32768) >> 8`. `80` is neutral;
+`00` and `FF` are near extremes, not stop commands.
 
-Spring : positions de début/fin de zone morte converties de signé 16 bits
-vers 11 bits ; les huit bits hauts vont en `D1/D2`, les trois bas et les
-signes des coefficients en `SS`. Après traitement du seuil 2048 du firmware,
-les coefficients sont quantifiés sur quatre bits dans `KK`, et la saturation
-sur huit bits dans `CL`. L'encodage du prototype est une adaptation attribuée
-de cette branche. `center` utilise un spring symétrique à saturation de 30 %,
-pour une seconde ; ce n'est ni une calibration ni un maintien permanent.
+Spring converts dead-zone start/end positions from signed 16-bit space to
+11-bit space. Damper and Inertia share the damper slot; the strongest active
+effect wins. Friction uses its own slot. Ramp, Square, Sine, Triangle, Sawtooth
+Up, Sawtooth Down and Custom are synthesized on the host every 4 ms and mixed
+into the constant-force slot.
 
-Damper : coefficients signés de chaque côté, modules quantifiés sur quatre
-bits (`min(abs(k)*2,65535)>>12`), signes séparés, saturation sur huit bits.
-Inertia utilise ce même encodage et partage le slot damper ; le plus fort des
-effets actifs est retenu. Friction reprend les signes et la saturation, avec
-des coefficients sur huit bits (`min(abs(k)*2,65535)>>8`) dans son propre slot.
+Manufacturer autocenter uses `FE 0D A A B 00 00`, followed by `14 00 ...`, with
+non-linear A/B calculation in `lg4ff_set_autocenter_default`. The project
+documents that path but keeps autocenter disabled after setup and after bounded
+tests so the wheel is not left applying force.
 
-Ramp, Square, Sine, Triangle, Sawtooth Up, Sawtooth Down et Custom sont
-synthétisés sur l'hôte toutes les 4 ms. Leur niveau instantané, leurs gains,
-directions, durées, répétitions, délais et enveloppes sont convertis, mélangés
-avec les constantes actives, puis bornés et envoyés dans le slot constant.
-La première commande utilise l'opération `1`; les variations suivantes
-utilisent `C`. Custom accepte un canal et copie les échantillons fournis par
-DirectInput pour les rejouer selon leur période d'échantillonnage.
+The 12 standard DirectInput effect GUIDs are registered and advertised. The CLI
+`directinput-test` offers a bounded one-second test for each one.
 
-Autocentre constructeur : `FE 0D A A B 00 00`, suivi de `14 00 ...`, avec
-calcul non linéaire de A/B dans `lg4ff_set_autocenter_default`. Documenté mais
-non activé dans le prototype : le spring borné évite de laisser un autocentre
-actif après la fermeture. `0D <mode>` règle la boucle firmware dans
-`lg4ff_init_slots` ; non nécessaire au test minimal, non envoyé.
+### Initialization And Stop
 
-Les douze GUID d'effets standard sont enregistrés et annoncés à DirectInput.
-Le CLI `directinput-test` propose un essai borné d'une seconde pour chacun.
+1. Enumerate without changing drivers; check VID/PID/revision/descriptor.
+2. If needed, send `native`, then enumerate again after the PID changes.
+3. Read inputs without FFB initialization for the first milestone.
+4. For an output session, prepare the stop guard before the first transfer, send
+   stop + disable autocenter, then send the requested command.
+5. For an effect, use a one-second CLI maximum, interruptible wait, explicit
+   stop, then RAII fallback stop.
+6. On session exit/error, try stop and autocenter-disable independently, even if
+   one write fails.
 
-### Initialisation et arrêt
-
-1. Énumérer sans changer les pilotes, vérifier VID/PID/révision/descripteur.
-2. Si nécessaire, `native`, puis nouvelle énumération après changement de PID.
-3. Lire les entrées sans initialisation FFB pour le premier jalon.
-4. Pour une session d'écriture : préparer la garde d'arrêt avant le premier
-   transfert, envoyer stop + autocentre désactivé ; envoyer la commande voulue.
-5. Pour un effet : durée maximale du CLI d'une seconde, attente interruptible
-   par événement Windows, arrêt explicite puis arrêt de secours RAII.
-6. À la sortie/erreur d'une session d'écriture, tenter stop et désactivation
-   d'autocentre indépendamment, même si l'une des deux écritures échoue.
-
-Ctrl+C réveille immédiatement l'attente. Les écritures overlapped ont un délai
-de garde ; une écriture annulée est terminée avant de libérer son buffer.
-La latence d'arrêt réelle dépend de Windows et de l'USB. Les sources ne prouvent
-pas de watchdog matériel : arrêt brutal du processus, panne hôte ou câble
-débranché peuvent empêcher le stop. Une durée logicielle n'est pas une garantie
-matérielle. Garder le volant dégagé et pouvoir couper son alimentation pour
-les premiers essais. Aucun essai moteur n'est exécuté par CTest.
+`Ctrl+C` wakes the wait immediately. Overlapped writes have a guard timeout; a
+cancelled write is completed before freeing its buffer. Real stop latency
+depends on Windows and USB. The sources do not prove a hardware watchdog:
+process crash, host failure or unplugged USB can prevent a stop command from
+reaching the wheel. Keep the wheel clear and power reachable during early tests.
+CTest never sends motor commands.
 
 [kernel]: https://github.com/berarma/new-lg4ff/blob/2092db19f7b40854e0427a1b2e39eda9f8d0c3cd/hid-lg4ff.c
 [hid]: https://github.com/berarma/new-lg4ff/blob/2092db19f7b40854e0427a1b2e39eda9f8d0c3cd/hid-lg.c

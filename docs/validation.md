@@ -1,187 +1,156 @@
-# Validation du prototype
+# Prototype Validation
 
-## Essais matériels du 7 septembre 2026, après nettoyage
+## Hardware Tests On 7 September 2026
 
-Essais sur le G25 révision `1222`, avec la pile HID Microsoft et sans les
-paquets/filtres WingMan retirés ci-dessous. Les résultats de cette section
-remplacent les états « non testé » des relevés historiques.
+Tests were run on a Logitech G25 revision `1222`, using the Microsoft HID stack
+after removing legacy WingMan / Logitech Gaming Software filters. These results
+replace the earlier "not tested" notes from the initial audit.
 
-| Vérification | Résultat observé |
+| Check | Observed Result |
 | --- | --- |
-| Bascule `native` | Transfert réussi, réénumération de `046d:c294` en `046d:c299` |
-| Descripteur natif | Rapports Windows **12/8/145 octets**, offsets du décodeur vérifiés avec HidP sur le descripteur réel |
-| DirectInput sans LGS, avant `g25ff` | **4 axes, 19 boutons, 1 POV ; FFB non annoncé** |
-| DirectInput avec `g25ff`, x64 et x86 | **4 axes, 19 boutons, 1 POV ; FFB annoncé ; 12 effets standard sur 12** |
-| Capture d'entrée de 60 secondes | **17 683 rapports** décodés ; mouvement du volant et trois pédales observés |
-| Pédales | Accélérateur, frein et embrayage atteignent chacun **0 à 100 %** dans la capture |
-| Shifter | Les valeurs indicatives N, 1–6 et R apparaissent dans la capture ; comparaison exhaustive des commandes physiques encore à effectuer |
-| Plage 540° | Transfert réussi ; confirmation physique jugée trop difficile par l'utilisateur |
-| Plage 180° | Transfert réussi ; **l'utilisateur confirme les butées à environ ±90°** |
-| Retour à 900° après essai 180° | Commande transférée ; course totale physique non remesurée |
-| Force constante à 3,1 %, une seconde | Transferts de l'effet et des deux commandes d'arrêt réussis ; aucune force ressentie lors de deux essais |
-| Ressort à saturation 3,1 %, une seconde | Transferts réussis et arrêt envoyé ; aucune force ressentie |
-| Force constante à 12,5 %, répétée | Force ressentie, mais jugée très faible par l'utilisateur |
-| Ressort à 30 %, répété | **Effet clairement ressenti et confirmé par l'utilisateur** |
-| Amortisseur à 30 %, répété | **Effet clairement ressenti et confirmé par l'utilisateur** |
-| Interruption console pendant un effet | `CTRL_BREAK` injecté après 250 ms ; arrêt global et désactivation de l'autocentre transmis ; sortie 130 |
-| DirectInput x64, constant/spring/damper | `CreateEffect` et `Start` réussis ; rapports attendus `A6`, spring `EE/4C`, damper `0F/4C`, puis arrêt propre |
-| DirectInput x86, constant | Même trajet réussi et même rapport constant `A6`, puis arrêt propre |
-| DirectInput x64, neuf effets ajoutés | Ramp, Square, Sine, Triangle, Sawtooth Up/Down, Inertia, Friction et Custom : création, démarrage, mises à jour temporelles le cas échéant et arrêt réussis sur le G25 |
-| DirectInput x86, effets ajoutés | Inventaire 12/12 ; Sine, Friction et Custom exécutés sur le G25 avec arrêt propre |
-| G25 Control | Processus de notification lancé au login ; menu 180/360/540/900 vérifié par le chemin `WM_COMMAND`, retour final à 900° ; aucune activité CPU mesurable au repos sur deux secondes |
+| `native` mode switch | Successful transfer and re-enumeration from `046d:c294` to `046d:c299` |
+| Native descriptor | Windows reports **12/8/145 byte** input/output/feature buffers; decoder offsets verified with HidP on the real descriptor |
+| DirectInput without LGS, before `g25ff` | **4 axes, 19 buttons, 1 POV; FFB not advertised** |
+| DirectInput with `g25ff`, x64 and x86 | **4 axes, 19 buttons, 1 POV; FFB advertised; 12/12 standard effects** |
+| 60-second input capture | **17,683 reports** decoded; wheel movement and all three pedals observed |
+| Pedals | Throttle, brake and clutch each reached **0 to 100%** in the capture |
+| Shifter | Indicative N, 1-6 and R values appeared in the capture; exhaustive physical switch mapping remains to be done |
+| 540 degree range | Transfer succeeded; physical confirmation was considered hard to judge by the user |
+| 180 degree range | Transfer succeeded; **user confirmed stops at about +/-90 degrees** |
+| Return to 900 degrees after 180 degree test | Command transferred; full physical range not re-measured |
+| Constant force at 3.1% for one second | Effect and both stop commands transferred; no force felt in two tests |
+| Spring at 3.1% saturation for one second | Transfer and stop succeeded; no force felt |
+| Constant force at 12.5%, repeated | Force felt, but considered very weak by the user |
+| Spring at 30%, repeated | **Effect clearly felt and confirmed by the user** |
+| Damper at 30%, repeated | **Effect clearly felt and confirmed by the user** |
+| Console interruption during an effect | `CTRL_BREAK` injected after 250 ms; global stop and autocenter-disable transferred; exit code 130 |
+| DirectInput x64, constant/spring/damper | `CreateEffect` and `Start` succeeded; expected `A6`, spring `EE/4C`, damper `0F/4C` reports, then clean stop |
+| DirectInput x86, constant | Same path succeeded with the same constant report `A6`, then clean stop |
+| DirectInput x64, nine added effects | Ramp, Square, Sine, Triangle, Sawtooth Up/Down, Inertia, Friction and Custom created, started, updated when time-based, and stopped successfully on the G25 |
+| DirectInput x86, added effects | Inventory 12/12; Sine, Friction and Custom executed on the G25 with clean stop |
+| G25 Control | Notification process starts at sign-in; 180/360/540/900 menu command path verified; final return to 900 degrees; no measurable idle CPU over two seconds |
 
-Les builds Release LLVM-MinGW x64 et x86 passent chacun les cinq suites
-CTest. Le test COM charge directement la DLL, crée la factory et
-`IDirectInputEffectDriver`, vérifie sa version et le déchargement, sans ouvrir
-le matériel. La cinquième suite vérifie les formes d'onde, les rampes et
-l'indexation des échantillons Custom indépendamment du temps réel. Après
-enregistrement, un inventaire DirectInput n'émet aucun
-rapport HID ; l'ouverture en écriture reste différée jusqu'au premier ordre FFB.
+Release LLVM-MinGW x64 and x86 builds each pass the five CTest suites. The COM
+test loads the DLL directly, creates the factory and `IDirectInputEffectDriver`,
+checks its version and unloads it without opening hardware. The math suite
+checks waveforms, ramps and Custom sample indexing independently from real time.
+After registration, a DirectInput inventory does not emit HID reports; write
+access is deferred until the first FFB command.
 
-Les valeurs d'angle du moniteur dépendent de la plage fournie en argument :
-elles ne mesurent pas la course réelle. La validation à 180° repose sur le
-retour humain, et pas simplement sur des valeurs affichées de −90 à +90°.
-Les 19 boutons, toutes les directions du POV et le mode séquentiel ne sont
-pas encore validés individuellement. De petites variations des pédales près
-du repos apparaissent dans les captures ; aucune zone morte n'est appliquée.
+Monitor angle values depend on the range passed as an argument. They do not
+measure the real physical travel. The 180 degree validation is based on user
+feedback, not only displayed angle values. The 19 buttons, every POV direction
+and sequential shifter mode are not yet validated one by one. Small pedal
+variations near rest appeared in captures; no dead zone is applied.
 
-Le relevé en lecture seule indique `VirtualizationBasedSecurityStatus=2`,
-mais `SecurityServicesRunning=[0]` et `HypervisorEnforcedCodeIntegrity\\Enabled=0`.
-Windows indique aussi `UEFISecureBootEnabled=0`. **Ces essais ne valident donc
-pas le fonctionnement avec intégrité de la mémoire et Secure Boot actifs.**
-Aucun de ces paramètres n'a été modifié pour les essais ou le nettoyage.
+Read-only security inventory reported `VirtualizationBasedSecurityStatus=2`, but
+`SecurityServicesRunning=[0]`, `HypervisorEnforcedCodeIntegrity\Enabled=0`, and
+`UEFISecureBootEnabled=0`. **These tests therefore do not validate operation
+with Memory Integrity and Secure Boot enabled.** None of those settings was
+changed during testing or cleanup.
 
-Les captures et diagnostics locaux sont conservés sous
-`build/hardware-tests-20260907/`, ignoré par Git. L'interruption console a été
-validée par les transferts et le code de sortie ; la sensation physique d'un
-effet interrompu, la fermeture forcée et la déconnexion restent à tester.
-La couche DirectInput complète est implémentée et enregistrée par utilisateur.
-Son utilisation dans un vrai jeu a été confirmée avec les trois effets initiaux.
-La sensation physique propre à chacun des neuf effets ajoutés reste à comparer,
-même si leur chaîne DirectInput et leurs transferts HID ont été validés.
+Local captures and diagnostics are kept under `build/hardware-tests-20260907/`,
+which is ignored by Git. Console interruption was validated through transferred
+stop reports and exit code; physical feel during an interrupted effect, forced
+process termination and USB disconnect still need more testing. Real-game use
+was confirmed with the initial DirectInput effects. The nine later-added effects
+have validated DirectInput/HID transfer paths; their exact physical feel should
+still be compared game by game.
 
-## Nettoyage effectué le 7 septembre 2026
+## Driver Cleanup Performed On 7 September 2026
 
-À la demande de l'utilisateur, les paquets WingMan 5.09.129.0 `oem25.inf`
-(WmJoyHid), `oem26.inf` (WmVirHid) et `oem27.inf` (WmBEnum) ont été exportés
-puis désinstallés avec PnPUtil. Leur suppression a réussi, sans `/force`
-ni redémarrage demandé. Les périphériques virtuels associés, les anciennes
-instances du volant et les enregistrements OEM/FFB de ses modes C294/C298/C299
-ont été retirés après sauvegarde. Les autres périphériques Logitech ne font
-pas partie des cibles. Aucune protection Windows n'a été modifiée.
+At the user's request, WingMan 5.09.129.0 packages `oem25.inf` (WmJoyHid),
+`oem26.inf` (WmVirHid) and `oem27.inf` (WmBEnum) were exported and removed with
+PnPUtil. Removal succeeded without `/force` and without a requested reboot.
+Related virtual devices, old wheel instances and OEM/FFB registrations for
+C294/C298/C299 modes were removed after backup. Other Logitech devices were not
+targeted. No Windows security setting was changed.
 
-Relevé PnP après nettoyage : les nœuds USB et HID du G25 utilisent tous deux
-`input.inf`, fournisseur **Microsoft**, statut OK, sans filtre WingMan.
-La pile USB comprend `HidUsb` ; la pile joystick comprend `hidgamepad` et
-`HidUsb`. Les services WmHidLo/WmFilter/WmBEnum/WmXlCore/WmVirHid ne sont
-plus retournés par l'inventaire des pilotes système.
+Post-cleanup PnP inventory: both USB and HID nodes for the G25 use `input.inf`,
+provider **Microsoft**, status OK, with no WingMan filter. The USB stack includes
+`HidUsb`; the joystick stack includes `hidgamepad` and `HidUsb`. Services
+WmHidLo/WmFilter/WmBEnum/WmXlCore/WmVirHid no longer appear in system-driver
+inventory.
 
-Le volant s'annonce maintenant **046d:c294, révision 1222**, en mode de
-compatibilité. `g25tool info` détecte correctement le G25 et relève :
+The wheel then reported **046d:c294, revision 1222** in compatibility mode.
+`g25tool info` correctly detected the G25 and reported:
 
-* rapports Windows input/output/feature : **8/8/0 octets** ;
-* volant X sur 10 bits, axe Y combiné, 12 boutons et un POV ;
-* sortie constructeur `FF00:03`, sept octets avec identifiant nul ;
-* DirectInput : **2 axes, 12 boutons, 1 POV, FFB non annoncé**.
+- Windows input/output/feature buffers: **8/8/0 bytes**
+- 10-bit X wheel axis, combined Y axis, 12 buttons and one POV
+- vendor output `FF00:03`, seven bytes with report ID zero
+- DirectInput: **2 axes, 12 buttons, 1 POV, FFB not advertised**
 
-C'est désormais une détection constatée avec la pile Microsoft. Cela ne
-valide pas encore les entrées complètes en mode natif, les butées ou les
-effets. Aucune commande `native`, `range` ou FFB du prototype n'a été envoyée
-pendant le nettoyage ; la prochaine étape est le passage natif contrôlé,
-suivi d'un nouveau relevé de descripteur et des tests d'entrée.
+No `native`, `range` or FFB command was sent during cleanup. The next step was
+the controlled native switch, followed by a fresh descriptor inventory and input
+tests.
 
-Sauvegarde locale :
-`build/driver-cleanup-20260907/backup-20260907-085114/` (32 fichiers).
-Le dossier parent conserve `cleanup.ps1`, le journal `cleanup.log`, le
-résultat `result.json`, les inventaires et les sorties du CLI avant/après.
-Il est ignoré par Git. Le script est propre à ce PC et vérifie les empreintes
-des trois INF avant toute mutation ; ne pas le réutiliser sur un autre poste
-ni après réattribution des numéros de paquets.
+Local backup:
+`build/driver-cleanup-20260907/backup-20260907-085114/` (32 files). The parent
+folder keeps `cleanup.ps1`, `cleanup.log`, `result.json`, inventories and CLI
+output before/after cleanup. It is ignored by Git. The cleanup script was
+machine-specific and checked the hashes of the three INF packages before any
+mutation; do not reuse it on another machine or after package numbers change.
 
-## Mise à jour du 7 septembre 2026 : G25 présent, ancien pilote actif
+## Earlier Audit: G25 Present With Legacy Logitech Driver
 
-Le G25 connecté est détecté comme `046d:c299`, révision `1222`. Cette
-détection **ne valide pas le fonctionnement sans le pilote Logitech** :
+Before cleanup, the connected G25 was detected as `046d:c299`, revision `1222`,
+but that did **not** validate operation without the Logitech driver:
 
-* Les deux nœuds USB/HID utilisent le paquet Logitech `oem25.inf`,
-  version `5.9.129.0`.
-* `pnputil /enum-devices /instanceid ... /stack` confirme `WmHidLo` dans
-  la pile USB et `WmFilter` dans la pile HID, aux côtés de `HidUsb`.
-  Les services `WmHidLo` et `WmFilter` sont démarrés.
-* DirectInput annonce cinq axes, 19 boutons, un POV et
-  `DIDC_FORCEFEEDBACK=yes`. La clé OEMForceFeedback du G25 est encore
-  enregistrée avec le CLSID Logitech `{8D533A4D-7A5F-11D3-8297-0050DA1A72D3}`.
-  Cet indicateur FFB ne démontre donc pas une prise en charge native Microsoft
-  ni une fonctionnalité apportée par notre prototype.
-* Les capacités HID actuelles annoncent **13/8/145 octets** pour les rapports
-  input/output/feature, identifiant compris, avec un axe Slider supplémentaire.
-  Le décodeur initial attend 12 octets en entrée et refuse ce descripteur.
-  On ne peut pas attribuer avec certitude cette différence au filtre Logitech
-  avant une comparaison avec la pile Microsoft seule.
+- USB/HID nodes used Logitech package `oem25.inf`, version `5.9.129.0`.
+- `pnputil /enum-devices /instanceid ... /stack` confirmed `WmHidLo` in the USB
+  stack and `WmFilter` in the HID stack, alongside `HidUsb`.
+- DirectInput reported five axes, 19 buttons, one POV and
+  `DIDC_FORCEFEEDBACK=yes`; OEMForceFeedback was still registered with Logitech
+  CLSID `{8D533A4D-7A5F-11D3-8297-0050DA1A72D3}`.
+- HID capabilities reported **13/8/145 byte** input/output/feature buffers,
+  including report ID, with an additional Slider axis. The original decoder
+  expected 12 input bytes and rejected that descriptor.
 
-Seules des requêtes de diagnostic ont été exécutées : aucun changement de
-pilote, de registre ou de sécurité, et aucune commande moteur. La compilation
-et les résultats automatisés historiques ci-dessous restent distincts de
-ce relevé matériel.
+Only diagnostic requests were run during that audit: no driver change, no
+registry change, no security change and no motor command.
 
-Pour valider l'objectif « sans LGS », comparer sur un Windows où ce paquet
-et ses filtres ne sont pas actifs, puis refaire `list`/`info` après une
-reconnexion physique. La suppression des anciens composants sur ce PC est
-une opération système distincte, non effectuée pendant cet audit. Fermer le
-Profiler seul ne suffit pas puisque les pilotes sont chargés dans la pile.
-Une éventuelle désinstallation doit aussi considérer les enregistrements
-FFB résiduels et les autres périphériques utilisant le même paquet.
+Reference:
+[PnPUtil `/stack`](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/pnputil-command-syntax).
 
-Référence de l'outil de diagnostic :
-[PnPUtil, option /stack](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/pnputil-command-syntax).
+## Initial Audit On 6 September 2026
 
-## Relevé initial du 6 septembre 2026
+The first audit was run before hardware validation. A working executable did not
+validate hardware behavior.
 
-Relevé du 6 septembre 2026. La présence d'un exécutable fonctionnel ne valide
-pas le comportement du matériel.
-
-## Vérifications réellement effectuées
-
-| Vérification | Résultat |
+| Check | Result |
 | --- | --- |
-| Système local | Windows 11 Professionnel, build 26200, x64 |
-| Compilateur local | LLVM-MinGW 20260826, Clang 23.1.0, UCRT x64 |
-| Générateur | CMake 4.4.3, MinGW Makefiles |
-| Compilation Debug du cœur puis du CLI | Réussie, aucun avertissement avec `-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion` |
-| Compilation Release du CLI | Réussie, aucun avertissement avec les mêmes options |
-| Tests du protocole et de la garde d'arrêt | 69 vérifications réussies |
-| Tests Windows des capacités, sélection, exclusion des écrivains et annulation | 23 vérifications réussies |
-| Scénarios CLI dry-run et arguments invalides | 18 scénarios réussis |
-| CTest Debug et Release | 3 suites sur 3 réussies dans chaque configuration |
-| `g25tool list` sur le PC | Aucune collection de volant Logitech correspondante |
-| `g25tool info` sur le PC | Aucun volant correspondant dans HID ou DirectInput |
-| Dépendances du binaire portable | DLL Windows/HID/SetupAPI/DirectInput et UCRT ; pas de DLL HIDAPI/libusb/LLVM à déployer |
-| Compilation MSVC / workflow GitHub | Configuration fournie ; non exécutée sur ce poste sans Visual Studio |
-| Entrées d'un G25 réel | **Non testées : volant absent** |
-| Bascule USB, butées, effet physique, arrêt moteur | **Non testés : volant absent** |
-| FFB dans les jeux | **Non implémenté à ce jalon** |
+| Local system | Windows 11 Professional, build 26200, x64 |
+| Local compiler | LLVM-MinGW 20260826, Clang 23.1.0, UCRT x64 |
+| Generator | CMake 4.4.3, MinGW Makefiles |
+| Debug build of core then CLI | Successful, no warnings with `-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion` |
+| Release CLI build | Successful, no warnings with the same options |
+| Protocol and stop-guard tests | 69 checks passed |
+| Windows capability, selection, writer-exclusion and cancellation tests | 23 checks passed |
+| CLI dry-run and invalid argument scenarios | 18 scenarios passed |
+| Debug and Release CTest | 3 suites of 3 passed in each configuration |
+| `g25tool list` on the PC | No matching Logitech wheel collection |
+| `g25tool info` on the PC | No matching HID or DirectInput wheel |
+| Portable binary dependencies | Windows/HID/SetupAPI/DirectInput DLLs and UCRT; no HIDAPI/libusb/LLVM DLL to deploy |
+| MSVC / GitHub workflow build | Configuration provided; not run locally without Visual Studio |
+| Real G25 inputs | **Not tested: wheel absent** |
+| USB switch, stops, physical effect, motor stop | **Not tested: wheel absent** |
+| FFB in games | **Not implemented at that milestone** |
 
-Les tests n'énumèrent ni n'ouvrent les périphériques HID. Les fixtures
-d'entrée sont des vecteurs synthétiques construits à partir du descripteur
-publié, pas des captures présentées comme provenant d'un G25 réel.
+Tests do not enumerate or open HID devices. Input fixtures are synthetic vectors
+built from the published descriptor, not captures presented as coming from a
+real G25.
 
-Le test d'interruption Windows déclenche l'événement d'arrêt pendant une
-attente d'une seconde et vérifie son réveil anticipé. Il ne simule pas une
-fermeture forcée du système et ne mesure pas le délai USB d'arrêt du moteur.
-Le chemin du gestionnaire Ctrl+C et la fermeture de fenêtre restent à essayer
-sur le poste avec le volant, après le test normal faible.
+The Windows interruption test triggers a stop event during a one-second wait and
+checks that the wait wakes early. It does not simulate forced system shutdown
+and does not measure USB motor-stop latency.
 
-Les paramètres de sécurité Windows n'ont pas été modifiés. Leur état n'a pas
-été certifié par ces tests ; l'absence de pilote custom ne remplace pas le
-relevé HVCI/Secure Boot du futur essai matériel.
+## Reproducing The Portable Build On The Test Machine
 
-## Reproduire la compilation portable sur ce poste
-
-Les outils ont été obtenus depuis les releases officielles
-[LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw/releases/tag/20260826) et
-[CMake](https://github.com/Kitware/CMake/releases/tag/v4.4.3), extraits dans
-`.tools` sans installation système. La signature Authenticode de cmake.exe
-a été vérifiée valide. Aucune modification du PATH global n'a été faite.
+Tools were downloaded from official
+[LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw/releases/tag/20260826) and
+[CMake](https://github.com/Kitware/CMake/releases/tag/v4.4.3) releases, then
+extracted under `.tools` without system installation. The Authenticode signature
+of `cmake.exe` was verified as valid. The global `PATH` was not modified.
 
 ```powershell
 $cmake = Join-Path $PWD '.tools/cmake-4.4.3-windows-x86_64/bin/cmake.exe'
@@ -193,66 +162,49 @@ $make = Join-Path $PWD '.tools/llvm-mingw-20260826-ucrt-x86_64/bin/mingw32-make.
 & $ctest --test-dir build/portable-release --output-on-failure
 ```
 
-Pour MSVC, utiliser les commandes du README. Les deux configurations restent
-distinctes pour éviter de réutiliser un cache CMake d'un autre compilateur.
+For MSVC, use the commands from the README. Keep build directories separate to
+avoid reusing a CMake cache from another compiler.
 
-## Procédure sur un vrai G25 sans Logitech Gaming Software
+## Hardware Test Procedure
 
-Conserver les sorties ci-dessous avec la version/build Windows, révision du
-volant, origine du pilote actif et état de Secure Boot/Memory Integrity.
-Ne pas modifier ces protections pour essayer de faire passer un test.
+Keep the command output together with the Windows build/version, wheel revision,
+active driver provider and Secure Boot / Memory Integrity state. Do not change
+those protections just to make a test pass.
 
-1. **Avant toute écriture** : fixer le volant, connecter pédales et shifter,
-   dégager sa rotation, fermer les jeux et contrôleurs FFB concurrents.
-   Exécuter `list`, puis `info`. Relever VID/PID, révision et longueurs des
-   rapports. Vérifier le pilote Microsoft actif dans le Gestionnaire de
-   périphériques et conserver le diagnostic DirectInput. S'il reste un ancien
-   filtre Logitech, ce poste ne constitue pas encore une validation « sans LGS ».
-2. **Mode** : si un G25 reconnu est en `c294/c298`, inspecter `native --dry-run`,
-   puis utiliser `native` ; attendre et relancer `list`/`info`. Attendu : PID
-   `c299` et nouveaux handles valides. Si la commande signale une déconnexion,
-   vérifier la liste avant de réessayer : la bascule peut avoir eu lieu.
-   Un descripteur inconnu impose d'analyser le relevé, pas d'outrepasser le filtre.
-3. **Jalon 1, entrées** : `monitor --raw --seconds 30`, puis `monitor`.
-   Tourner doucement, actionner chaque pédale séparément sur toute sa course,
-   chaque bouton et le POV. Essayer N, 1–6, R et le mode séquentiel. Comparer
-   les boutons réellement actifs au champ `Gear*` indicatif et aux octets
-   constructeur. Tester Ctrl+C et déconnexion pendant une lecture. Conserver
-   les rapports bruts pour ajouter des fixtures matérielles après examen.
-4. **Jalon 2, plage** : inspecter `range 540 --dry-run`, envoyer `range 540`,
-   puis `monitor --range 540`. Mesurer la rotation effective et les butées,
-   sans confondre la conversion d'affichage avec une mesure physique. Répéter
-   avec 900. Vérifier aussi le comportement après débranchement/rebranchement.
-5. **Jalon 3, constante** : inspecter `test-ffb --dry-run`, puis `test-ffb`.
-   Attendu : très faible force pendant environ une seconde et retour au repos.
-   Garder accès à la coupure d'alimentation. Répéter en interrompant tôt avec
-   Ctrl+C, puis tester la fermeture de console. `stop` doit fonctionner
-   indépendamment après une session terminée. Ne pas lancer deux contrôleurs
-   de moteurs en parallèle.
-6. **Conditions** : `center` (spring faible temporaire) puis `test-ffb damper`.
-   Le damper se ressent lors d'un mouvement, pas nécessairement au repos.
-   Vérifier l'arrêt, sans augmenter immédiatement l'intensité si l'effet est
-   imperceptible. Le seuil de frottement mécanique peut masquer l'essai faible.
+1. **Before writes**: clamp the wheel, attach wanted accessories, keep rotation
+   clear, close games and other FFB controllers. Run `list`, then `info`. Record
+   VID/PID, revision and report lengths. Check that the Microsoft driver is
+   active in Device Manager and keep the DirectInput diagnostic.
+2. **Mode**: if a recognized G25 is in `c294/c298`, inspect `native --dry-run`,
+   then run `native`; wait and rerun `list`/`info`. Expected result: PID `c299`
+   and valid new handles.
+3. **Inputs**: run `monitor --raw --seconds 30`, then `monitor`. Turn the wheel
+   slowly, actuate each pedal through full travel, press every button and POV
+   direction, and test N, 1-6, R and sequential shifter mode.
+4. **Range**: inspect `range 540 --dry-run`, send `range 540`, then run
+   `monitor --range 540`. Measure physical travel and stops instead of relying
+   on the displayed conversion. Repeat with 900 and after reconnect.
+5. **Constant force**: inspect `test-ffb --dry-run`, then run `test-ffb`. Expect
+   weak force for about one second and a return to idle. Keep power reachable.
+6. **Conditions**: run `center` for temporary spring, then `test-ffb damper`.
+   Damper is felt while moving, not necessarily at rest. Verify stop behavior.
 
-Un jalon est validé seulement après consignation de son résultat physique.
-Si WriteFile échoue : relever le code Win32, PID, capacités et pilote actif.
-Le projet ne propose pas de désactiver HVCI, de remplacer HID par Zadig ou
-d'installer un pilote non signé pour contourner l'échec.
+A milestone is validated only after the physical result is recorded. If
+`WriteFile` fails, record the Win32 code, PID, capabilities and active driver.
+The project does not recommend disabling HVCI, replacing HID with Zadig or
+installing unsigned drivers to bypass failures.
 
-## Limites à conserver visibles
+## Limits To Keep Visible
 
-* Le descripteur de référence vient du mode G25 d'un G29 dans lg4ff_userspace.
-  Ses offsets ont maintenant été vérifiés sur un G25 réel de révision `1222`
-  avec la pile Microsoft ; cela ne couvre pas toutes les révisions.
-* La révision G25 reconnue exclut les G27 à signature `123x` et les G29 connus.
-  Un firmware inconnu est un cas d'analyse ; aucune option « force » ne permet
-  de lui envoyer aveuglément les commandes.
-* Le mapping Profiler du shifter peut différer du HID brut ; les champs bruts
-  restent visibles pour éviter de masquer cette incertitude.
-* Les timeouts et Ctrl+C sont logiciels. Aucun watchdog du volant n'est
-  démontré, et annuler une I/O ne garantit pas que le matériel a reçu un stop.
-* Le prototype garde la plage demandée mais laisse les effets arrêtés et
-  l'autocentre désactivé ; il ne peut pas restaurer des réglages non lus.
-* Aucun backend virtuel, pilote kernel ni enregistrement OEM DirectInput n'a
-  été installé. L'intégration aux jeux est une étape distincte documentée
-  dans windows_architecture.md.
+- The reference descriptor comes from G25 mode on a G29 in `lg4ff_userspace`.
+  Its offsets were later verified on a real G25 revision `1222` with the
+  Microsoft stack; that does not cover every revision.
+- Unknown firmware is an analysis case. There is no "force" option to blindly
+  send commands to an unrecognized revision.
+- The Profiler shifter mapping may differ from raw HID; raw fields remain
+  visible to avoid hiding that uncertainty.
+- Timeouts and Ctrl+C are software controls. No wheel watchdog has been proven,
+  and cancelling I/O does not guarantee the hardware received a stop command.
+- The prototype keeps the requested range but leaves effects stopped and
+  autocenter disabled; it cannot restore settings that were never read.
+- No virtual backend or kernel driver is included.

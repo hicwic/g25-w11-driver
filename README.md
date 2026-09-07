@@ -1,60 +1,99 @@
 # g25-userspace
 
-Prototype open source **C++20 / CMake** pour communiquer avec un Logitech G25
-sous Windows 11 via le pilote HID Microsoft. Licence GPL-2.0-only.
+Open source **C++20 / CMake** prototype for using a Logitech G25 on Windows 11
+through the standard Microsoft HID stack. License: GPL-2.0-only.
 
-Le CLI détecte les collections HID candidates, inspecte les capacités
-HID/DirectInput et implémente les entrées natives, la plage de rotation et
-des essais FFB bornés. Une DLL COM x86/x64 traduit maintenant les **12 effets
-standards DirectInput** vers le protocole Logitech. **Les entrées, les butées à
-180° et les commandes de force ont été essayées sur un vrai G25 sans les
-anciens pilotes Logitech.** Le chargement DirectInput x86/x64 et les rapports
-produits ont aussi été vérifiés. Voir [le relevé matériel](docs/validation.md).
+The project provides:
 
-Aucun pilote kernel custom, LGS, WinUSB/Zadig ou changement de Secure Boot,
-Memory Integrity/HVCI ou signature des pilotes n'est requis par ce prototype.
-L'intégration DirectInput ajoute des clés COM/OEM dans le registre de
-l'utilisateur courant ; le script d'installation les sauvegarde et les retire.
-Les essais actuels ont toutefois été réalisés avec Secure Boot et l'intégrité
-de la mémoire désactivés sur le poste ; leur compatibilité reste à valider.
+- `g25tool.exe`, a diagnostic and low-level control CLI.
+- `g25ff.dll`, a per-user DirectInput force feedback effect driver, built for
+  x64 and x86 games.
+- `g25tray.exe`, a notification-area helper that switches the wheel to native
+  G25 mode and applies the preferred steering range.
+- A per-user Windows installer and GitHub Actions release pipeline.
 
-## Compilation Visual Studio 2022
+No custom kernel driver, LGS, WinUSB/Zadig setup, Secure Boot change, Memory
+Integrity/HVCI change or driver-signing bypass is required by this prototype.
+The DirectInput integration adds COM/OEM registry keys under the current user;
+the installer backs them up and restores/removes them on uninstall.
 
-Préparer Visual Studio 2022 avec « Développement Desktop en C++ », le SDK
-Windows et CMake ≥ 3.24. Depuis le dossier du projet :
+## AI Assistance Notice
+
+This project was developed with substantial AI assistance. The code and
+documentation should be reviewed like any other community driver-adjacent
+project: read the source, check the protocol notes, and test cautiously. This
+notice is intentionally visible for contributors and users who do not want to
+use AI-assisted software.
+
+## Current Status
+
+The native inputs, 180 degree stops, force commands, DirectInput loading and all
+12 standard DirectInput effects have been tested on a real Logitech G25 without
+the legacy Logitech drivers installed. See [validation](docs/validation.md).
+
+The current DirectInput driver exposes these standard effects:
+
+- Constant Force
+- Ramp Force
+- Square, Sine, Triangle, Sawtooth Up and Sawtooth Down
+- Spring, Damper, Inertia and Friction
+- Custom Force
+
+Pedals and shifter are optional. The G25 base exposes a fixed HID descriptor, so
+their axes/buttons are still visible to Windows when those accessories are not
+connected. Games that support multiple controllers can bind the G25 wheel and a
+separate USB pedal set independently.
+
+## Windows Installer
+
+Download the latest `g25-w11-driver-<version>-setup.exe` from GitHub Releases:
+
+https://github.com/hicwic/g25-w11-driver/releases
+
+The installer runs per user and installs into `%LOCALAPPDATA%\g25ff`. It copies
+the x64/x86 DirectInput DLLs, installs `g25tray.exe`, registers the DirectInput
+FFB effects for `VID_046D&PID_C299`, starts G25 Control, and adds it to user
+sign-in startup.
+
+Uninstall is available from Windows Settings, Apps, Installed apps,
+**G25 Windows 11 Driver**. It runs the same cleanup path as the script:
+
+- stops `g25tray.exe`
+- removes the startup entry
+- unregisters the x64/x86 COM DirectInput effect driver
+- restores previous per-user OEM/COM keys when a backup existed
+- removes the installed binaries
+
+Close games before installing, updating or uninstalling so `g25ff.dll` is not
+held open by a running process.
+
+## Building With Visual Studio 2022
+
+Install Visual Studio 2022 with Desktop development with C++, the Windows SDK
+and CMake 3.24 or newer.
 
 ```powershell
 cmake --preset vs2022-x64
 cmake --build --preset release
 ctest --preset release
+
 cmake --preset vs2022-x86
 cmake --build --preset release-x86
 ctest --preset release-x86
 ```
 
-L'exécutable est `build/vs2022-x64/Release/g25tool.exe`. Le dossier peut aussi
-être ouvert directement dans Visual Studio via CMakePresets.json.
+The x64 CLI is built at `build/vs2022-x64/Release/g25tool.exe`. The project can
+also be opened directly in Visual Studio through `CMakePresets.json`.
 
-MSVC n'étant pas installé sur le poste de réalisation, la compilation locale
-a été effectuée avec Clang/LLVM-MinGW x64. Le workflow Windows MSVC est fourni,
-mais n'a pas été exécuté ici. Voir [le relevé de validation](docs/validation.md).
+The CI builds with MSVC on Windows. During early local development, portable
+Clang/LLVM-MinGW builds were also used under `build/portable-release` and
+`build/portable-release-x86`.
 
-Sur ce poste, les binaires déjà compilés sont dans `build/portable-release`
-(x64) et `build/portable-release-x86` (x86) :
+## CLI Usage
 
-```powershell
-.\build\portable-release\g25tool.exe list
-.\build\portable-release\g25tool.exe info
-.\build\portable-release\g25tool.exe monitor --seconds 30
-```
-
-## Utilisation
-
-Dans les exemples suivants, `g25tool` désigne l'exécutable compilé ci-dessus.
-Brancher la base du volant et, selon la configuration utilisée, le pédalier
-et/ou le shifter. Fixer le volant et dégager sa trajectoire. Le mode natif
-peut provoquer une réénumération et une calibration
-par le firmware. Fermer les jeux et outils qui commandent déjà les moteurs.
+In the examples below, `g25tool` means the built executable. Attach the wheel
+base and any accessories you want to use. Clamp the wheel, keep its movement
+clear, and close games or tools that may already command the motors.
 
 ```text
 g25tool list
@@ -63,12 +102,11 @@ g25tool monitor
 g25tool monitor --raw --seconds 30
 ```
 
-`list` montre les index, PID, révision et chemin HID. En présence de plusieurs
-volants, utiliser `--device INDEX` d'après une nouvelle liste. `info` est
-purement diagnostique : il affiche notamment les longueurs des rapports,
-les usages HID et l'indicateur FFB annoncé par DirectInput.
+`list` shows device index, PID, revision and HID path. If several wheels are
+present, run `list` again and pass `--device INDEX`. `info` is diagnostic only:
+it prints report sizes, HID usages and the DirectInput FFB capability flag.
 
-Si un **G25 reconnu** est encore en mode Driving Force/DFP :
+If a recognized G25 is still in Driving Force / DFP compatibility mode:
 
 ```text
 g25tool native
@@ -76,18 +114,14 @@ g25tool list
 g25tool monitor
 ```
 
-Attendre la réénumération entre `native` et `list`. Aucun changement de mode
-n'est envoyé à un simple PID partagé dont la révision réelle est inconnue.
-Un descripteur non reconnu provoque un diagnostic, jamais un remplacement
-automatique du pilote. Une coupure/reconnexion USB peut rétablir le mode
-de démarrage ; les anciens handles/index ne sont pas réutilisés.
+Wait for USB re-enumeration between `native` and `list`. The tool does not send
+native-mode commands to a shared PID unless the real revision identifies a G25.
+If an unknown descriptor is found, the tool reports it instead of guessing.
 
-`monitor` affiche l'angle estimé, les trois pédales indépendantes, les boutons
-1–19, le POV, une interprétation indicative du rapport de boîte et les octets
-constructeur. L'affichage des axes est limité à 20 Hz ; les changements de
-boutons/POV sont affichés immédiatement. `--raw` affiche tous les rapports.
-La correspondance du shifter doit être vérifiée sur le matériel, notamment
-en mode séquentiel ; voir [protocole](docs/protocol.md#shifter).
+`monitor` prints the estimated wheel angle, three separate pedals, buttons
+1-19, POV, an indicative shifter interpretation and raw vendor bytes. Axis
+display is rate-limited to 20 Hz; button/POV changes are shown immediately.
+`--raw` prints every input report.
 
 ```text
 g25tool range 900 --dry-run
@@ -96,16 +130,13 @@ g25tool range 540
 g25tool monitor --range 540
 ```
 
-`--dry-run` n'ouvre aucun périphérique et montre exactement les buffers Windows.
-La plage acceptée est 40–900°. `monitor --range` ne règle pas le volant : il
-indique seulement la plage à utiliser pour convertir la mesure en degrés.
-Sans cette option, l'hypothèse de 900° est affichée. Aucune lecture de la plage
-courante n'a été identifiée. Une sortie « transferred » signifie que Windows
-a accepté le transfert, pas que les butées ont été mesurées.
+`--dry-run` does not open hardware and prints the exact Windows output buffer.
+The accepted physical range is 40-900 degrees. `monitor --range` is only the
+angle conversion assumption; it does not configure the wheel.
 
-## Essais Force Feedback
+## Force Feedback Tests
 
-Inspecter d'abord les rapports sans matériel :
+Inspect reports without hardware first:
 
 ```text
 g25tool test-ffb --dry-run
@@ -113,7 +144,7 @@ g25tool center --dry-run
 g25tool test-ffb damper --dry-run
 ```
 
-Puis, pour les essais sur le volant fixé et dégagé :
+Then, with the wheel clamped and clear:
 
 ```text
 g25tool test-ffb
@@ -122,33 +153,15 @@ g25tool test-ffb damper
 g25tool stop
 ```
 
-La constante vaut environ 30 % de l'échelle de commande positive. Spring
-(`center` ou `test-ffb spring`) et damper utilisent la même saturation bornée.
-La durée prévue est une seconde, sans réglage de force maximale. Une force
-aussi faible peut être difficile à percevoir ; elle n'est pas une mesure
-garantie de couple. `center` exerce un ressort temporaire, sans garantir de
-recentrer complètement le volant et sans modifier sa calibration.
+The CLI tests use bounded force for one second. `Ctrl+C` interrupts the wait and
+sends stop commands. Sessions also try to stop effects on exit or exception.
+There is no verified hardware watchdog; if a process or USB host crashes before
+the stop reaches the wheel, force may remain active. Keep power reachable during
+early tests.
 
-**Ctrl+C interrompt l'attente et déclenche les commandes d'arrêt.** Les sessions
-d'écriture arrêtent aussi les effets à la sortie ou après une exception.
-Le test désactive l'autocentre et arrête les quatre slots, y compris des
-effets qu'un autre logiciel aurait laissés. Aucun réglage FFB préalable
-n'est restauré. Un autre processus g25tool ne peut pas écrire simultanément
-dans la même session Windows ; cela ne verrouille pas les logiciels tiers.
+## DirectInput Game Integration
 
-Le système ne dispose pas d'un watchdog matériel vérifié. En cas d'arrêt
-brutal du processus ou de panne USB/hôte, le stop peut ne pas parvenir au
-volant : pouvoir couper l'alimentation pour les premiers essais. Le seul
-fait de fermer un handle ne garantit pas l'arrêt du moteur.
-
-Les codes de sortie sont 0 (succès de la commande), 1 (échec matériel/runtime),
-2 (arguments invalides), 130 (interruption). `list`/`info` peuvent réussir
-avec une liste vide ; ils n'affirment alors aucune présence matérielle.
-
-## Intégration DirectInput des jeux
-
-Construire **les deux architectures** puis enregistrer les DLL pour
-l'utilisateur courant :
+Build both architectures, then register the DLLs for the current user:
 
 ```powershell
 cmake -S . -B build/x64 -A x64
@@ -162,98 +175,55 @@ powershell -ExecutionPolicy Bypass -File scripts/Register-G25FF.ps1 `
   -Tray build/x64/Release/g25tray.exe
 ```
 
-Le script copie les DLL et `g25tray.exe` dans `%LOCALAPPDATA%\g25ff\bin`,
-sauvegarde les clés OEM/COM préexistantes puis enregistre les 12 GUID standards
-pour le G25 `046d:c299`. Il démarre aussi G25 Control et l'enregistre au login
-de l'utilisateur. Il ne demande pas d'élévation et n'installe aucun pilote
-noyau. Fermer les jeux avant une mise à jour ou une désinstallation.
+The script copies files to `%LOCALAPPDATA%\g25ff\bin`, backs up existing
+per-user OEM/COM keys, registers the 12 DirectInput effect GUIDs for the G25
+`046d:c299`, starts G25 Control and registers it for sign-in. It does not ask
+for elevation and does not install a kernel driver.
 
-### G25 Control dans la zone de notification
-
-Un clic sur l'icône en forme de volant **G25 Control** permet de choisir 180°, 360°, 540° ou
-900°. Le choix est mémorisé dans le profil utilisateur et appliqué au volant.
-Après un branchement, l'application passe automatiquement un G25 reconnu du
-mode de compatibilité au mode natif, attend sa réénumération, puis réapplique
-la rotation. Elle réagit aux événements de périphérique Windows et reste au
-repos une fois la configuration terminée. Si un jeu tient déjà la sortie HID,
-elle affiche que le réglage est en attente et réessaie jusqu'à sa libération.
-Après la calibration et l'application de la rotation, elle envoie aussi un
-arrêt des effets et désactive l'autocentre pour laisser les moteurs au repos.
-
-La DLL FFB n'a pas besoin de `g25tray.exe` pour fonctionner : elle est chargée
-dans le processus du jeu. L'application sert au passage en mode natif et à la
-rotation après connexion. Le gain maximal reste géré par le jeu.
-
-Seule la base du volant est nécessaire. Le pédalier et le shifter peuvent être
-débranchés, y compris lorsqu'un autre pédalier est utilisé. Le descripteur HID
-du G25 continue d'annoncer leurs axes et boutons à Windows ; sans accessoire,
-ces commandes restent au repos. Un jeu qui accepte plusieurs contrôleurs peut
-lier le volant et un pédalier USB séparé indépendamment.
-
-Vérifier la découverte sans jouer d'effet, puis essayer chaque traduction
-pendant une seconde :
-
-```text
-g25tool info
-g25tool directinput-test constant
-g25tool directinput-test spring
-g25tool directinput-test damper
-g25tool directinput-test friction
-g25tool directinput-test sine
-```
-
-`directinput-test` accepte `constant`, `ramp`, `square`, `sine`, `triangle`,
-`saw-up`, `saw-down`, `spring`, `damper`, `inertia`, `friction` et `custom`.
-`info` doit afficher `DIDC_FORCEFEEDBACK=yes` et `effects=12 standard=12/12`.
-Chaque test est borné à 30 %, respecte Ctrl+C et envoie un arrêt à la fin.
-Pour désinstaller et restaurer l'état sauvegardé :
+To uninstall and restore the saved per-user registry state:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/Register-G25FF.ps1 -Action Uninstall
 ```
 
-Le pilote additionne et borne Constant, Ramp, les cinq formes périodiques et
-Custom sur le slot de force constante. Spring utilise un slot de condition,
-Damper et Inertia en partagent un autre, et Friction utilise le quatrième slot
-matériel. Pour chaque famille de condition partagée, l'effet actif le plus fort
-est retenu. Durées, répétitions, délai de départ, enveloppe, direction, gain
-global, pause, reset et arrêt sont pris en charge. La synthèse tourne toutes
-les 4 ms et évite les écritures quand l'octet de force quantifié ne change pas.
+## G25 Control Tray App
 
-## Architecture et suite
+Click the **G25 Control** wheel icon in the notification area to choose 180, 360,
+540 or 900 degrees. The choice is saved in the user profile and applied to the
+wheel.
 
-* [Analyse du protocole, commandes et sources figées](docs/protocol.md)
-* [Architecture Windows, DLL DirectInput et backends virtuels](docs/windows_architecture.md)
-* [Tests réalisés et procédure de validation matérielle](docs/validation.md)
-* [Attributions et réutilisation GPL](THIRD_PARTY_NOTICES.md)
+After USB connection, the tray app switches a recognized G25 from compatibility
+mode to native mode, waits for re-enumeration, waits briefly for calibration to
+settle, then applies the saved steering range. It sends stop and disables
+autocenter after applying the range so the motors are left idle. The app reacts
+to Windows device notifications and stays idle once setup is done.
 
-`src/protocol` contient les encodeurs purs ; `src/device` le transport et les
-gardes de session ; `src/directinput` la DLL COM ; `src/app` le CLI ; `src/tray`
-l'application de notification. Il n'y a pas de backend virtuel factice. La
-prochaine étape est un essai dans plusieurs jeux et l'ajustement des conversions
-selon les appels réellement observés.
+The DirectInput FFB DLL does not need `g25tray.exe` once the wheel is in native
+mode; games load the DLL in their own process. The tray app exists to automate
+native mode and steering range after reconnects. Max FFB gain is left to games.
 
-Les tests automatisés n'envoient **aucun rapport au matériel**. Le cœur
-portable se compile aussi hors Windows :
+## Project Layout
 
-```sh
-cmake -S . -B build -DG25_BUILD_TOOL=OFF
-cmake --build build
-ctest --test-dir build --output-on-failure
-```
+- `src/protocol`: pure Logitech command encoders and input decoder
+- `src/device`: Win32 HID transport, device selection and DirectInput probing
+- `src/directinput`: DirectInput COM effect driver
+- `src/app`: CLI
+- `src/tray`: notification-area helper
+- `src/settings`: per-user settings
+- `tests`: protocol, math, COM-loading and CLI dry-run tests
 
-Les copies des projets étudiés (`.research`) et outils portables (`.tools`)
-sont ignorés par Git et ne sont pas des dépendances du code source.
+Reference material in `.research` and portable tools in `.tools` are ignored by
+Git and are not dependencies of the distributed source.
 
-## Releases et installateur
+## Release Pipeline
 
-Les livraisons GitHub contiennent un zip portable et un installateur Windows
-par utilisateur. L'installateur installe `g25ff.dll` x64/x86, `g25tray.exe`,
-enregistre les cles DirectInput dans `HKCU`, lance G25 Control et ajoute son
-demarrage automatique a la session Windows. La desinstallation restaure les
-cles sauvegardees par `Register-G25FF.ps1`.
+GitHub Actions provides:
 
-Le pipeline publie aussi des artefacts `dev-<sha>` sur chaque push `main` et
-une nightly prerelease `nightly`. Les versions stables sont declenchees par un
-tag `v*`, par exemple `v0.1.0`, avec changelog et binaires generes
-automatiquement. Voir [release process](docs/release.md).
+- CI on Windows x64, Windows x86 and Linux portable core.
+- Dev artifacts named `dev-<sha>` on every push to `main`.
+- A moving `nightly` prerelease.
+- Versioned releases when a tag named `v*` is pushed.
+
+Each release builds both architectures, generates a changelog, produces a
+portable zip and compiles a per-user Windows installer. See
+[release process](docs/release.md).

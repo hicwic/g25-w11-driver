@@ -1,185 +1,151 @@
-# Architecture Windows
+# Windows Architecture
 
-Architecture mise en œuvre au 7 septembre 2026 : prototype utilisateur C++20,
-CMake, API natives Windows, aucune dépendance runtime tierce obligatoire et
-aucun pilote noyau ajouté. Les jalons matériels et la DLL DirectInput initiale
-sont décrits dans validation.md.
+Architecture as of 7 September 2026: user-mode C++20 prototype, CMake, native
+Windows APIs, no required third-party runtime dependency, and no added kernel
+driver. Hardware milestones and DirectInput validation are recorded in
+`docs/validation.md`.
 
-## Chemin retenu pour le prototype
+## Chosen Prototype Path
 
 ```mermaid
 flowchart LR
-    G[G25 physique] <--> H[hidusb.sys / hidclass.sys Microsoft]
-    H <--> T[Transport HID Win32]
-    T <--> D[G25 : identité et décodage]
+    G[Physical G25] <--> H[Microsoft hidusb.sys / hidclass.sys]
+    H <--> T[Win32 HID transport]
+    T <--> D[G25 identity and decoding]
     D <--> C[g25tool]
-    P[Encodeurs Logitech purs] --> D
-    H --> I[Entrées DirectInput des jeux]
-    J[Jeu] --> F[g25ff.dll x86/x64]
+    P[Pure Logitech encoders] --> D
+    H --> I[DirectInput game inputs]
+    J[Game] --> F[g25ff.dll x86/x64]
     F --> P
 ```
 
-`SetupDiGetClassDevs` + `GUID_DEVINTERFACE_HID` énumèrent les collections.
-`CreateFileW` ouvre un handle partagé, sans remplacement du pilote HID.
-`HidD_GetAttributes`, `HidD_GetPreparsedData`, `HidP_GetCaps` et les capacités
-de valeurs/boutons décrivent le périphérique. Les accès lecture et écriture
-sont demandés uniquement pour les commandes qui en ont besoin.
-`ReadFile`/`WriteFile` overlapped permettent attente, annulation et détection
-des déconnexions. RAII possède handles et données préparsées.
+`SetupDiGetClassDevs` plus `GUID_DEVINTERFACE_HID` enumerate HID collections.
+`CreateFileW` opens a shared handle without replacing the HID driver.
+`HidD_GetAttributes`, `HidD_GetPreparsedData`, `HidP_GetCaps` and HID value /
+button capabilities describe the device. Read and write access are requested
+only for commands that need them.
 
-Les [buffers HID doivent avoir le Report ID en tête][reports], y compris zéro
-sans identifiant explicite. `OutputReportByteLength` fixe la taille Windows.
-Microsoft recommande [WriteFile pour les sorties continues][send] ;
-`HidD_SetOutputReport` n'est pas universellement supporté. Le prototype ne
-devine pas un autre canal après échec. Une erreur indique l'opération, le code
-Win32 et le chemin concerné. Les envois sont journalisés en hexadécimal.
+`ReadFile`/`WriteFile` with overlapped I/O provide bounded waits, cancellation
+and disconnect detection. RAII owns handles and preparsed data.
 
-## Ce que Windows peut exposer nativement
+Windows HID buffers include the Report ID as the first byte, including `00`
+when the descriptor has no explicit Report ID. `OutputReportByteLength`
+determines the exact Windows buffer length. The prototype uses `WriteFile` for
+continuous output reports and does not guess another output channel after a
+failure.
 
-Le descripteur natif G25 indique joystick, axes X/Z/Rz/Y, POV et 19 boutons.
-On s'attend donc à des entrées HID utilisables sans LGS, et à leur énumération
-DirectInput. En mode de compatibilité, le descripteur et les commandes
-accessibles diffèrent ; l'embrayage et certains rapports peuvent manquer.
-C'est une attente fondée sur le descripteur, pas un constat sur ce PC : aucun
-G25 présent n'a été trouvé pendant l'analyse initiale.
+## Native Windows Exposure
 
-`info` fournit les tailles, usages et domaines HID réellement retournés, puis
-un inventaire DirectInput avec axes/boutons/POV et indicateur `DIDC_FORCEFEEDBACK`.
-Cet inventaire sert à distinguer ce que le système annonce de ce que nous
-déduisons. Il ne joue aucun effet et ne garantit pas que les fonctions
-annoncées par un ancien composant installé fonctionnent. Sur un PC sans LGS,
-conserver le résultat avant toute intégration FFB pour servir de référence.
+The native G25 descriptor exposes a joystick, axes X/Z/Rz/Y, one POV and 19
+buttons. That should make normal inputs visible without LGS. Compatibility mode
+descriptors expose a different layout, where clutch or some shifter information
+may be missing.
 
-Le rapport de sortie G25 est propriétaire (page `FF00`), pas un descripteur
-FFB HID PID complet. Envoyer les commandes Logitech en userspace **ne suffit
-pas** à faire apparaître spontanément le volant comme FFB dans DirectInput.
-L'architecture doit aussi recevoir les requêtes des jeux.
+`g25tool info` prints HID report sizes/usages and a DirectInput inventory with
+axes, buttons, POV and `DIDC_FORCEFEEDBACK`. It is a diagnostic command and does
+not play effects.
 
-## Intégration aux jeux
+The G25 output report is vendor-specific (`FF00` page), not a full HID PID FFB
+descriptor. Sending Logitech commands from user mode is not enough to make
+DirectInput games discover FFB. Games also need a DirectInput effect driver.
 
-### DLL d'effets DirectInput retenue
+## DirectInput Effect Driver
 
-Microsoft documente [IDirectInputEffectDriver][effectdriver] et
-[DIHIDFFINITINFO][hidinit], qui fournit l'identité du HID à une implémentation
-de pilote d'effets. Cela permet d'étudier une DLL COM utilisateur x86 et x64,
-enregistrée avec les capacités OEM Force Feedback du joystick physique.
+Microsoft documents `IDirectInputEffectDriver` and `DIHIDFFINITINFO`, which
+allow a user-mode COM DLL to receive effect requests for a physical HID device
+registered through OEM Force Feedback registry keys.
 
 ```mermaid
 flowchart LR
-    J[Jeu DirectInput] --> F[DLL COM IDirectInputEffectDriver x86 ou x64]
-    F --> E[Cycle de vie / mélange / limites des effets]
-    E --> L[Encodage Logitech]
-    L --> H[HID Microsoft] --> G[G25]
+    J[DirectInput game] --> F[COM effect driver x86/x64]
+    F --> E[Effect lifecycle, mixing and limits]
+    E --> L[Logitech encoding]
+    L --> H[Microsoft HID] --> G[G25]
 ```
 
-Ce chemin réutilise les entrées du volant physique et évite un pilote virtuel.
-`g25ff.dll` implémente `IDirectInputEffectDriver` dans les architectures x86
-et x64. Un enregistrement OEM/COM par utilisateur associe le G25 natif
-`046d:c299` aux douze effets standard DirectInput. La simple interrogation des capacités
-n'ouvre pas le volant en écriture ; la sortie HID est acquise au premier ordre
-FFB. Une mutex locale exclut alors les écritures concurrentes de `g25tool`.
+This path reuses the physical wheel inputs and avoids a virtual wheel driver.
+`g25ff.dll` implements `IDirectInputEffectDriver` for x86 and x64. A per-user
+OEM/COM registration associates native G25 `046d:c299` with the 12 standard
+DirectInput effects.
 
-Sur le poste d'essai, DirectInput x86 et x64 annoncent quatre axes, 19 boutons,
-un POV, `DIDC_FORCEFEEDBACK=yes` et les 12 GUID standard : Constant, Ramp,
-Square, Sine, Triangle, Sawtooth Up/Down, Spring, Damper, Inertia, Friction et
-Custom. Les appels `CreateEffect`/`Start` ont produit les rapports HID attendus
-pour les 12 effets, suivis de l'arrêt du slot et du nettoyage global. Cela
-valide la chaîne technique jusqu'au G25 ; la sensation physique des nouveaux
-effets et la compatibilité avec d'autres jeux doivent encore être consignées.
+Capability queries do not open the wheel for writing. The HID output path is
+acquired when the first FFB command needs to be sent. A local mutex excludes
+concurrent writes from `g25tool`.
+
+On the test machine, DirectInput x86 and x64 report four axes, 19 buttons, one
+POV, `DIDC_FORCEFEEDBACK=yes`, and all 12 standard effect GUIDs: Constant, Ramp,
+Square, Sine, Triangle, Sawtooth Up/Down, Spring, Damper, Inertia, Friction and
+Custom. `CreateEffect`/`Start` produced the expected HID reports for all 12
+effects, followed by slot stop and global cleanup.
 
 `DownloadEffect`, `StartEffect`, `StopEffect`, `DestroyEffect`, `SetGain`,
-pause/reset/actuateurs et statut sont explicites. Les durées DirectInput en
-microsecondes, répétitions, délais, directions, gains et enveloppes sont
-convertis par un worker. Les constantes actives sont additionnées et bornées.
-Ramp, les cinq formes périodiques et Custom sont synthétisés toutes les 4 ms,
-puis mélangés dans le slot constant. Spring utilise son slot matériel. Damper
-et Inertia partagent le slot damper, où l'effet actif le plus fort est retenu.
-Friction utilise le quatrième slot matériel.
+pause/reset/actuator state and status are explicit. DirectInput durations,
+repetitions, delays, directions, gains and envelopes are converted by a worker.
+Active constants are summed and clamped. Ramp, periodic effects and Custom are
+synthesized every 4 ms and mixed into the constant-force slot. Spring uses its
+hardware slot. Damper and Inertia share the damper slot, keeping the strongest
+active effect. Friction uses the fourth hardware slot.
 
-Le script `scripts/Register-G25FF.ps1` copie les deux DLL dans
-`%LOCALAPPDATA%\g25ff\bin`, sauvegarde les clés présentes et enregistre les
-vues COM 32/64 bits. La désinstallation retire ces clés et restaure les
-sauvegardes. Cette modification userspace du registre ne requiert ni INF, ni
-élévation, ni signature de pilote.
+## Registration And Tray Helper
 
-`g25tray.exe` est une application distincte, lancée au login de l'utilisateur.
-La DLL reste autonome dans chaque jeu. L'application attend les notifications
-de connexion Windows ; elle ne sonde pas continuellement le HID. Lorsqu'un G25
-reconnu revient en mode de compatibilité, elle envoie la bascule native, attend
-la réénumération puis applique la rotation mémorisée (180°, 360°, 540° ou 900°).
-Elle arrête ensuite les effets et désactive l'autocentre pour relâcher les
-moteurs. Elle ne limite pas le gain FFB, qui reste sous le contrôle du jeu.
-La détection et les sorties FFB dépendent uniquement de la base du volant :
-ni le pédalier ni le shifter ne sont requis. Leurs usages restent présents dans
-le descripteur HID fixe lorsque les accessoires sont absents.
+`scripts/Register-G25FF.ps1` copies both DLLs to `%LOCALAPPDATA%\g25ff\bin`,
+backs up existing per-user registry keys and registers 32-bit and 64-bit COM
+views. Uninstall removes the keys and restores backups. This is a user-mode
+registry integration and does not need an INF, elevation or driver signature.
 
-### Option de repli : volant virtuel existant
+`g25tray.exe` is a separate application launched at user sign-in. The DLL stays
+autonomous inside each game process. The tray app waits for Windows device
+notifications and does not continuously poll HID. When a recognized G25 appears
+in compatibility mode, it sends the native-mode switch, waits for
+re-enumeration, waits briefly for firmware calibration to settle, applies the
+saved steering range (180, 360, 540 or 900 degrees), then stops effects and
+disables autocenter so the motors are released.
 
-| Solution étudiée | Intérêt | Limite / état de validation |
+The tray app does not limit FFB gain; games remain responsible for that. G25
+base detection and FFB output do not require pedals or shifter. Their usages
+remain present in the fixed HID descriptor when accessories are absent.
+
+## Virtual Wheel Fallback Considered
+
+| Option | Interest | Limit / Validation State |
 | --- | --- | --- |
-| [vJoy, fork BrunnerInnovation][vjoy] | Joystick virtuel, SDK de publication des axes et réception FFB ; correspond au chemin demandé | Contient un pilote kernel. Candidat seulement : il faut sélectionner et vérifier un binaire signé précis, puis tester HVCI + Secure Boot sur Windows cible. Aucune certification de compatibilité n'est déduite du README ou d'un numéro de version. |
-| [ViGEmBus][vigem] | Bus virtuel existant pour manettes Xbox 360 / DS4 | Dépôt archivé ; sorties de vibration de manette, pas un backend de volant DirectInput avec spring/damper. Non retenu. |
-| [Virtual HID Framework Microsoft][vhf] | Construction de HID virtuels | La documentation exige un source driver kernel KMDF/WDM ; ce n'est pas une API d'injection purement userspace. Hors prototype. |
+| [vJoy, BrunnerInnovation fork][vjoy] | Existing virtual joystick plus SDK, possible FFB callback path | Contains a kernel driver. Would require verification of signed binaries, HVCI and Secure Boot behavior before adoption. |
+| [ViGEmBus][vigem] | Existing virtual bus for Xbox 360 / DS4 pads | Archived project; gamepad rumble only, not a DirectInput wheel FFB backend. |
+| [Microsoft Virtual HID Framework][vhf] | Build virtual HID devices | Requires a KMDF/WDM kernel source driver; not a pure user-mode injection API. |
 
-Avec vJoy : jeu → DirectInput FFB → pilote virtuel → callback SDK vers
-userspace → moteur d'effets → sorties G25. Les entrées font le chemin G25 →
-service → SDK → périphérique virtuel. Il faut traiter les doublons de
-contrôleurs visibles et les pertes de connexion. Un éventuel filtre de
-masquage serait encore un composant à installer/évaluer ; il n'est pas requis
-pour essayer le vrai G25 et n'est pas ajouté ici.
+The virtual path remains unnecessary for the current prototype because the
+physical G25 inputs are already visible and DirectInput FFB can be associated
+with the real HID device.
 
-## Sécurité Windows
+## Windows Security
 
-Le CLI utilise les pilotes HID déjà installés. Le script DirectInput effectue
-uniquement l'enregistrement COM/OEM par utilisateur décrit ci-dessus. Aucun
-composant n'effectue d'installation de pilote, élévation automatique ou modification
-de Secure Boot, HVCI/Memory Integrity ou Driver Signature Enforcement.
-WinUSB/Zadig n'est pas utilisé. Ces protections n'empêchent pas par principe
-une application normale d'accéder à une collection joystick HID.
+The CLI uses the existing Microsoft HID drivers. The DirectInput integration
+performs only the per-user COM/OEM registration described above. No component
+installs a driver, elevates automatically, modifies Secure Boot, modifies
+HVCI/Memory Integrity or disables Driver Signature Enforcement. WinUSB/Zadig is
+not used.
 
-Pour un futur backend kernel, signature acceptée par Windows et
-[compatibilité HVCI][hvci] sont deux exigences distinctes. Un certificat de
-test ou une simple signature d'éditeur ne démontre pas une compatibilité
-Windows 11 en configuration protégée. Avant adoption : vérifier le catalogue
-et la provenance du paquet, l'installation sur le système cible avec ses
-protections actives, les événements Code Integrity, puis entrées et effets.
-Si aucun backend ne passe ces vérifications, arrêter cette voie et exposer
-le blocage au lieu de proposer de désactiver une protection.
+For any future kernel backend, accepted Windows signing and [HVCI
+compatibility][hvci] are separate requirements. A test certificate or simple
+publisher signature would not prove Windows 11 compatibility on a protected
+system.
 
-## Modules et étapes petites
+## Incremental Milestones
 
-1. **Analyse** : protocole sourcé, limites de réutilisation, architecture.
-2. **Socle** : CMake C++20, encodeurs/décodeur portables, tests de vecteurs
-   indépendants du matériel ; compiler avant d'ajouter le transport.
-3. **Jalon 1** : énumération HID, `list`, `info`, `monitor` ; capacité réelle,
-   lecture bornée et Ctrl+C ; compiler puis inventorier le PC.
-4. **Jalon 2** : `native` explicite si nécessaire et `range 40..900` ; protéger
-   l'identification et le choix du périphérique ; `--dry-run` pour inspecter
-   les rapports sans ouvrir le matériel ; compiler et tester les erreurs.
-5. **Jalon 3** : session FFB avec garde d'arrêt, force constante très faible
-   pendant une seconde ; spring/damper faibles ; tests d'arrêt/erreur sur faux
-   transport, jamais de moteur dans les tests automatiques.
-6. **Validation matérielle** : relevés sans LGS, mouvement de chaque entrée,
-   butées 540/900, faibles effets puis arrêt et déconnexion. Aucun jalon
-   matériel n'est déclaré atteint sur la seule base d'une compilation.
-7. **Jeux** : DLL DirectInput x86/x64 réalisée pour les 12 effets standard ;
-   chaîne validée dans un jeu et transferts des nouveaux effets vérifiés sur le
-   matériel. Poursuivre les essais de sensation et de compatibilité par jeu.
+1. Protocol analysis, reuse boundaries and architecture.
+2. CMake C++20 base, pure encoders/decoder and vector tests.
+3. HID enumeration, `list`, `info`, `monitor`, bounded reads and Ctrl+C.
+4. Explicit native-mode switch and 40-900 degree range command.
+5. Bounded FFB output sessions with stop guards.
+6. Hardware validation: input movement, stops, weak effects, stop and USB
+   disconnect behavior.
+7. Game integration through a DirectInput effect driver for the 12 standard
+   effects.
 
-Arborescence : `src/protocol` (pur, testable), `src/device` (Win32 + garde
-d'arrêt), `src/app` (CLI et signal console). `virtual_device` sera ajouté
-seulement avec un backend effectif ; aucun faux périphérique n'est annoncé.
+Main risks to keep visible: shared PID/re-enumeration, descriptor variations,
+concurrent HID output access, shifter mapping, lack of range readback, lack of a
+proven hardware watchdog, and game-specific DirectInput behavior.
 
-Difficultés principales : PID partagé et réénumération, variantes de
-descripteur, accès concurrent HID, correspondance des rapports de boîte,
-absence de lecture de plage et de watchdog démontré, puis intégration COM
-DirectInput et comportement des jeux. Elles sont des points de validation,
-pas des prétextes pour remplacer le pilote HID standard.
-
-[reports]: https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/initializing-hid-reports
-[send]: https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/sending-hid-reports
-[effectdriver]: https://learn.microsoft.com/en-us/windows/win32/api/dinputd/nn-dinputd-idirectinputeffectdriver
-[hidinit]: https://learn.microsoft.com/en-us/windows/win32/api/dinputd/ns-dinputd-dihidffinitinfo
 [vjoy]: https://github.com/BrunnerInnovation/vJoy
 [vigem]: https://github.com/nefarius/ViGEmBus
 [vhf]: https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/virtual-hid-framework--vhf-
