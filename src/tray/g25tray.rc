@@ -1,0 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
+#include "resource.h"
+// Transparent wheel artwork supplied on 7 September 2026.
+IDI_G25_CONTROL ICON "../../assets/g25-control.ico"

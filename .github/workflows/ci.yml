@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  windows:
+    name: Windows ${{ matrix.arch }}
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            configure: vs2022-x64
+            build: release
+            test: release
+          - arch: x86
+            configure: vs2022-x86
+            build: release-x86
+            test: release-x86
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake --preset ${{ matrix.configure }}
+      - run: cmake --build --preset ${{ matrix.build }} --parallel
+      - run: ctest --preset ${{ matrix.test }}
+
+  portable:
+    name: Portable core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DG25_BUILD_TOOL=OFF -DG25_BUILD_DIRECTINPUT=OFF -DG25_BUILD_TRAY=OFF -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure

@@ -1,0 +1,66 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '24 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  nightly:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build x64
+        run: |
+          cmake --preset vs2022-x64
+          cmake --build --preset release --parallel
+          ctest --preset release
+      - name: Build x86
+        run: |
+          cmake --preset vs2022-x86
+          cmake --build --preset release-x86 --parallel
+          ctest --preset release-x86
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = "nightly-$env:GITHUB_RUN_NUMBER"
+          .\scripts\Package-Release.ps1 -Version $version
+          .\scripts\Generate-Changelog.ps1 -Version $version -OutputPath dist\CHANGELOG.md
+      - name: Build installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $env:G25_VERSION = "nightly-$env:GITHUB_RUN_NUMBER"
+          $env:G25_PACKAGE_DIR = (Resolve-Path "dist\g25-w11-driver-$env:G25_VERSION").Path
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\g25-w11-driver.iss
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: g25-w11-driver-nightly
+          path: |
+            dist/g25-w11-driver-nightly-${{ github.run_number }}.zip
+            dist/g25-w11-driver-nightly-${{ github.run_number }}-setup.exe
+            dist/CHANGELOG.md
+      - name: Publish moving nightly release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -f nightly $env:GITHUB_SHA
+          git push -f origin nightly
+          $assets = @(
+            "dist/g25-w11-driver-nightly-$env:GITHUB_RUN_NUMBER.zip",
+            "dist/g25-w11-driver-nightly-$env:GITHUB_RUN_NUMBER-setup.exe"
+          )
+          gh release view nightly *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create nightly $assets --target $env:GITHUB_SHA --title "Nightly build" --notes-file dist\CHANGELOG.md --prerelease
+          } else {
+            gh release edit nightly --target $env:GITHUB_SHA --title "Nightly build" --notes-file dist\CHANGELOG.md --prerelease
+            gh release upload nightly $assets --clobber
+          }

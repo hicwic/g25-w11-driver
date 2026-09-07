@@ -1,0 +1,4 @@
+LIBRARY "g25ff"
+EXPORTS
+    DllCanUnloadNow
+    DllGetClassObject
