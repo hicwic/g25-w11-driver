@@ -107,7 +107,8 @@ La DLL reste autonome dans chaque jeu. L'application attend les notifications
 de connexion Windows ; elle ne sonde pas continuellement le HID. Lorsqu'un G25
 reconnu revient en mode de compatibilité, elle envoie la bascule native, attend
 la réénumération puis applique la rotation mémorisée (180°, 360°, 540° ou 900°).
-Elle ne limite pas le gain FFB, qui reste sous le contrôle du jeu.
+Elle arrête ensuite les effets et désactive l'autocentre pour relâcher les
+moteurs. Elle ne limite pas le gain FFB, qui reste sous le contrôle du jeu.
 La détection et les sorties FFB dépendent uniquement de la base du volant :
 ni le pédalier ni le shifter ne sont requis. Leurs usages restent présents dans
 le descripteur HID fixe lorsque les accessoires sont absents.

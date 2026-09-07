@@ -14,7 +14,6 @@ constexpr UINT tray_callback = WM_APP + 1;
 constexpr UINT timer_id = 1;
 constexpr UINT icon_id = 1;
 constexpr UINT cmd_rotation_base = 100;
-constexpr UINT cmd_apply = 300;
 constexpr UINT cmd_exit = 301;
 constexpr int rotations[]{180, 360, 540, 900};
 UINT taskbar_created{};
@@ -70,6 +69,8 @@ ApplyResult apply_to_wheel() {
         WriterLock lock;
         HidTransport transport(*found, Access::write);
         transport.send(set_range(settings.rotation));
+        transport.send(stop_all());
+        transport.send(disable_autocenter());
         applied_path = found->path;
         applied_rotation = settings.rotation;
         status = L"G25 prêt — " + std::to_wstring(settings.rotation) + L"°";
@@ -86,6 +87,7 @@ void apply_or_retry(HWND window) {
 }
 
 void show_menu(HWND window) {
+    settings = read_user_settings();
     HMENU menu = CreatePopupMenu();
     HMENU rotation_menu = CreatePopupMenu();
     AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, status.c_str());
@@ -96,7 +98,6 @@ void show_menu(HWND window) {
                     cmd_rotation_base + i, text.c_str());
     }
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(rotation_menu), L"Rotation maximale");
-    AppendMenuW(menu, MF_STRING, cmd_apply, L"Réappliquer maintenant");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, cmd_exit, L"Quitter");
     POINT point{};
@@ -133,9 +134,6 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             settings.rotation = rotations[command - cmd_rotation_base];
             applied_rotation = 0;
             (void)write_user_settings(settings);
-            apply_or_retry(window);
-        } else if (command == cmd_apply) {
-            applied_rotation = 0;
             apply_or_retry(window);
         } else if (command == cmd_exit) {
             DestroyWindow(window);

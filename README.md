@@ -177,6 +177,8 @@ mode de compatibilité au mode natif, attend sa réénumération, puis réappliq
 la rotation. Elle réagit aux événements de périphérique Windows et reste au
 repos une fois la configuration terminée. Si un jeu tient déjà la sortie HID,
 elle affiche que le réglage est en attente et réessaie jusqu'à sa libération.
+Après la calibration et l'application de la rotation, elle envoie aussi un
+arrêt des effets et désactive l'autocentre pour laisser les moteurs au repos.
 
 La DLL FFB n'a pas besoin de `g25tray.exe` pour fonctionner : elle est chargée
 dans le processus du jeu. L'application sert au passage en mode natif et à la
