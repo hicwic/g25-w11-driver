@@ -82,6 +82,55 @@ Cons:
    - a practical gamepad bridge prototype for immediate usability; or
    - a longer virtual-HID-wheel research branch for true wheel support.
 
+## Existing signed or installable virtual HID options
+
+This section tracks option 1 from the investigation: reuse an existing virtual input driver instead of writing and signing a new kernel driver.
+
+### vJoy
+
+vJoy is a signed virtual joystick driver. It can expose a generic joystick with configurable axes, buttons, and POV hats, and a feeder application can write input state into it.
+
+For this project it is probably not enough for GeForce NOW wheel mode. The device identity remains a generic vJoy device rather than a Logitech G29/G920/G923 VID/PID, and GeForce NOW appears to allowlist specific supported wheel IDs locally. vJoy can still be useful for local-game compatibility experiments or as a reference for DirectInput/HID PID force-feedback behavior.
+
+### libvirtualhid
+
+libvirtualhid is a C++ virtual HID library with a Windows UMDF2 control driver backed by Microsoft's Virtual HID Framework. Its public documentation says compatible applications can create virtual HID gamepads, keyboards, and mice, with custom descriptors and HID output callbacks.
+
+It is interesting architecturally because VHF is the right Windows mechanism for virtual HID devices, and it avoids a custom kernel transport minidriver. The current public product surface, however, is described around gamepads/keyboards/mice rather than racing wheels with HID PID force feedback. Treat it as a possible building block only if a small prototype proves that a custom wheel descriptor plus output reports can be created and seen by DirectInput/GeForce NOW.
+
+### HIDMaestro
+
+HIDMaestro is the strongest current candidate. Its repository includes Logitech wheel profiles for:
+
+- `logitech-g29` - VID/PID `046D:C24F`
+- `logitech-g920` - VID/PID `046D:C262`
+- `logitech-g923-ps` - VID/PID `046D:C266`
+- `logitech-g923-xbox` - VID/PID `046D:C26E`
+
+Those IDs match the Logitech wheels currently listed by NVIDIA for GeForce NOW, and the same IDs were found in the local GeForce NOW binaries. HIDMaestro also claims HID PID 1.0 DirectInput force-feedback support: the virtual driver accepts FFB output reports and raises them to the consumer application, which is exactly the bridge shape needed here.
+
+Important caveat: HIDMaestro is not a preinstalled Microsoft WHQL wheel driver. It installs a UMDF2 virtual HID driver and uses a locally trusted self-signed certificate, requiring administrator privileges. That is much lighter than writing and signing our own kernel driver, but it is still a system driver install and must be tested carefully.
+
+### Preferred prototype
+
+The first true-wheel prototype should use HIDMaestro with the `logitech-g29` profile:
+
+1. Real G25 stays hidden from games/GeForce NOW if needed.
+2. A small bridge app reads the real G25 input through this project's existing HID/DirectInput code.
+3. The bridge creates a virtual `046D:C24F` Logitech G29 through HIDMaestro.
+4. The bridge maps G25 wheel/buttons/pedals/shifter to the virtual G29 state.
+5. If GeForce NOW writes FFB to the virtual G29, the bridge receives HID PID output packets and translates them to the real G25.
+
+The first pass can ignore force feedback and only prove detection plus steering/pedal input in GeForce NOW. If GeForce NOW detects the virtual G29, then FFB routing becomes the next milestone.
+
+## Additional references for virtual HID research
+
+- vJoy: https://sourceforge.net/projects/vjoystick/
+- Microsoft Virtual HID Framework: https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/virtual-hid-framework--vhf-
+- libvirtualhid Windows driver package: https://docs.lizardbyte.dev/projects/libvirtualhid/latest/md_docs_2windows-driver.html
+- HIDMaestro: https://github.com/hifihedgehog/HIDMaestro
+- HIDMaestro public site: https://hidmaestro.org/
+
 ## References
 
 - NVIDIA support: "Does GeForce NOW support racing wheels and pedals?" updated 2026-05-15.
