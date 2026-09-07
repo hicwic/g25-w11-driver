@@ -43,7 +43,7 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          .\scripts\Package-Release.ps1 -Version $env:G25_VERSION
+          .\scripts\Package-Release.ps1 -Version $env:G25_VERSION -Build64 build\vs2022-x64 -Build32 build\vs2022-x86
           .\scripts\Generate-Changelog.ps1 -Version $env:G25_VERSION -OutputPath dist\CHANGELOG.md
       - name: Build installer
         shell: pwsh

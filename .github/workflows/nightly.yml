@@ -29,7 +29,7 @@ jobs:
         shell: pwsh
         run: |
           $version = "nightly-$env:GITHUB_RUN_NUMBER"
-          .\scripts\Package-Release.ps1 -Version $version
+          .\scripts\Package-Release.ps1 -Version $version -Build64 build\vs2022-x64 -Build32 build\vs2022-x86
           .\scripts\Generate-Changelog.ps1 -Version $version -OutputPath dist\CHANGELOG.md
       - name: Build installer
         shell: pwsh
