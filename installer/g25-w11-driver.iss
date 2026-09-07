@@ -29,7 +29,6 @@ UninstallDisplayIcon={app}\bin\g25tray.exe
 WizardStyle=modern
 
 [Languages]
-Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
