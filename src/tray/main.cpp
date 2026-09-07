@@ -19,8 +19,9 @@ constexpr int rotations[]{180, 360, 540, 900};
 UINT taskbar_created{};
 NOTIFYICONDATAW icon{};
 UserSettings settings;
-std::wstring status = L"Initialisation…";
+std::wstring status = L"Starting...";
 std::wstring applied_path;
+std::wstring pending_path;
 int applied_rotation{};
 enum class ApplyResult { complete, retry };
 
@@ -45,8 +46,9 @@ ApplyResult apply_to_wheel() {
             return info.vid == logitech_vid && identify_model(info.pid, info.revision) == Model::g25;
         });
         if (found == devices.end()) {
-            status = L"G25 non connecté";
+            status = L"G25 not connected";
             applied_path.clear();
+            pending_path.clear();
             applied_rotation = 0;
             return ApplyResult::complete;
         }
@@ -57,13 +59,20 @@ ApplyResult apply_to_wheel() {
             transport.send(stop_all());
             transport.send(disable_autocenter());
             transport.send(native_mode());
-            status = L"Passage en mode G25…";
+            status = L"Switching to G25 mode...";
             applied_path.clear();
+            pending_path.clear();
             return ApplyResult::retry;
         }
         if (applied_path == found->path && applied_rotation == settings.rotation) {
-            status = L"G25 prêt — " + std::to_wstring(settings.rotation) + L"°";
+            status = L"G25 ready - " + std::to_wstring(settings.rotation) + L" deg";
+            pending_path.clear();
             return ApplyResult::complete;
+        }
+        if (pending_path != found->path) {
+            pending_path = found->path;
+            status = L"Waiting for G25 calibration...";
+            return ApplyResult::retry;
         }
         require_g25_writer(*found, false);
         WriterLock lock;
@@ -72,11 +81,12 @@ ApplyResult apply_to_wheel() {
         transport.send(stop_all());
         transport.send(disable_autocenter());
         applied_path = found->path;
+        pending_path.clear();
         applied_rotation = settings.rotation;
-        status = L"G25 prêt — " + std::to_wstring(settings.rotation) + L"°";
+        status = L"G25 ready - " + std::to_wstring(settings.rotation) + L" deg";
         return ApplyResult::complete;
     } catch (...) {
-        status = L"G25 occupé — réglage en attente";
+        status = L"G25 busy - setup pending";
         return ApplyResult::retry;
     }
 }
@@ -93,13 +103,13 @@ void show_menu(HWND window) {
     AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, status.c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     for (UINT i = 0; i < std::size(rotations); ++i) {
-        const auto text = std::to_wstring(rotations[i]) + L"°";
+        const auto text = std::to_wstring(rotations[i]) + L" deg";
         AppendMenuW(rotation_menu, MF_STRING | (settings.rotation == rotations[i] ? MF_CHECKED : 0),
                     cmd_rotation_base + i, text.c_str());
     }
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(rotation_menu), L"Rotation maximale");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(rotation_menu), L"Maximum rotation");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, cmd_exit, L"Quitter");
+    AppendMenuW(menu, MF_STRING, cmd_exit, L"Exit");
     POINT point{};
     GetCursorPos(&point);
     SetForegroundWindow(window);
@@ -120,6 +130,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         return 0;
     case WM_DEVICECHANGE:
         applied_path.clear();
+        pending_path.clear();
         applied_rotation = 0;
         SetTimer(window, timer_id, 500, nullptr);
         return 0;
@@ -133,6 +144,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         if (command >= cmd_rotation_base && command < cmd_rotation_base + std::size(rotations)) {
             settings.rotation = rotations[command - cmd_rotation_base];
             applied_rotation = 0;
+            pending_path = applied_path;
             (void)write_user_settings(settings);
             apply_or_retry(window);
         } else if (command == cmd_exit) {
