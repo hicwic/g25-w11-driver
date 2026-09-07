@@ -45,6 +45,13 @@ function Set-Registration([Microsoft.Win32.RegistryView]$View, [string]$Dll) {
             $server.SetValue('ThreadingModel', 'Both', [Microsoft.Win32.RegistryValueKind]::String)
         } finally { $server.Dispose() }
 
+        $oem = $base.CreateSubKey($oemPath, $true)
+        try {
+            $oem.SetValue('OEMName', 'Logitech G25 Racing Wheel USB', [Microsoft.Win32.RegistryValueKind]::String)
+            $oem.SetValue('OEMData', [byte[]](0x43, 0x00, 0x88, 0x10, 0x13, 0x00, 0x00, 0x00),
+                          [Microsoft.Win32.RegistryValueKind]::Binary)
+        } finally { $oem.Dispose() }
+
         $axis = $base.CreateSubKey("$oemPath\Axes\0", $true)
         try {
             $axis.SetValue('', 'Wheel axis', [Microsoft.Win32.RegistryValueKind]::String)
