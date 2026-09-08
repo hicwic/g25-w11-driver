@@ -28,6 +28,9 @@ sealed class G25Source : IDisposable
     private HidStream _stream;
     private readonly byte[] _report = new byte[12];
     private readonly ManualResetEventSlim _firstFrame = new(false);
+    // Pulsed on every decoded frame so the submit loop runs at the wheel's own
+    // report rate (~200 Hz) instead of polling a cached value on a fixed timer.
+    private readonly AutoResetEvent _frameReady = new(false);
     private readonly Thread _reader;
     private G25Frame? _latest;
     private Exception? _failure;
@@ -102,10 +105,16 @@ sealed class G25Source : IDisposable
         return false;
     }
 
-    public G25Frame Read()
+    /// <summary>
+    /// Blocks until the reader thread decodes a fresh frame, or <paramref name="timeoutMs"/>
+    /// elapses (then it returns the last frame again, so the submit loop keeps the
+    /// virtual wheel fed during a brief stall). Throws once the reader has given up.
+    /// </summary>
+    public G25Frame WaitFrame(int timeoutMs)
     {
-        if (!_firstFrame.Wait(TimeSpan.FromSeconds(2)))
+        if (!_firstFrame.IsSet && !_firstFrame.Wait(TimeSpan.FromSeconds(2)))
             throw new TimeoutException("No input report received from the physical G25 within two seconds.");
+        _frameReady.WaitOne(timeoutMs);
         if (_failure != null) throw new IOException("Physical G25 input reader stopped.", _failure);
         return Volatile.Read(ref _latest)!;
     }
@@ -129,6 +138,7 @@ sealed class G25Source : IDisposable
                     s.Buttons,
                     s.Hat <= 7 ? s.Hat * 4500 : -1));
                 _firstFrame.Set();
+                _frameReady.Set();
             }
             catch (TimeoutException)
             {
@@ -139,6 +149,7 @@ sealed class G25Source : IDisposable
                 if (Reconnect()) continue;
                 _failure = ex;
                 _firstFrame.Set();
+                _frameReady.Set();
                 return;
             }
         }
@@ -147,8 +158,10 @@ sealed class G25Source : IDisposable
     public void Dispose()
     {
         _stopping = true;
+        _frameReady.Set();   // wake a waiting submit loop so it can see _stopping
         _reader.Join(500);
         _stream.Dispose();
         _firstFrame.Dispose();
+        _frameReady.Dispose();
     }
 }

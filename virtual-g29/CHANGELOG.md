@@ -7,6 +7,15 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+### Changed - event-driven submit loop (2026-09-08)
+
+`PumpG25` now blocks on a new decoded G25 frame instead of polling a cached
+value on a fixed `Thread.Sleep`. The virtual G29 is fed at the wheel's own
+report rate (~250 Hz measured) instead of ~64 Hz (`Sleep(4)` was rounding up to
+the 15.6 ms Windows timer tick). No `timeBeginPeriod`, so no system-wide timer
+pressure. `--rate-hz` now bounds only the idle resubmit rate. Telemetry line
+gains `inHz=`.
+
 ### Added - hide the physical G25 from local games (2026-09-08)
 
 The bridge worker now drives **HidHide** (nefarius/HidHide, MIT) while it runs:

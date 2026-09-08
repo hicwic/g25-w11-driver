@@ -55,7 +55,7 @@ static class Program
         Console.WriteLine("  --keep-existing         Do not purge stale virtual G29 devices before starting");
         Console.WriteLine("  --wheel-range <deg>     G25 rotation range at startup, default 900 (0 to skip)");
         Console.WriteLine("  --stop-event <name>     Named event a supervising service signals to stop cleanly");
-        Console.WriteLine("  --rate-hz <n>           Submit rate, default 250");
+        Console.WriteLine("  --rate-hz <n>           Resubmit rate while the wheel is idle, default 250 (live input follows the wheel's own ~200 Hz)");
         Console.WriteLine("  --duration <seconds>    Stop automatically after N seconds");
         Console.WriteLine("  --install-driver        Allow HIDMaestro driver install/refresh before bridge");
         Console.WriteLine("  --no-buttons            Do not forward G25 wheel and shifter buttons");
@@ -342,13 +342,18 @@ static class Program
         var state = new HMGamepadState { Axes = axes, Hat = HMHat.None, Buttons = 0 };
         var deadlineUtc = options.DurationSeconds > 0 ? DateTime.UtcNow.AddSeconds(options.DurationSeconds) : DateTime.MaxValue;
 
-        var delayMs = Math.Max(1, 1000 / Math.Clamp(options.RateHz, 30, 1000));
+        // Event-driven: WaitFrame returns as soon as the reader thread decodes a
+        // new G25 report (~200 Hz), so the virtual wheel is fed at the source
+        // rate. The timeout only bounds how long we sit on a silent wheel before
+        // resubmitting the last frame; keep it clear of the ~5 ms frame cadence.
+        var stallTimeoutMs = Math.Clamp(1000 / Math.Clamp(options.RateHz, 10, 100), 10, 100);
         var sw = Stopwatch.StartNew();
         long lastPrint = -1;
+        var submits = 0;
 
         while (!Shutdown.IsCancellationRequested && DateTime.UtcNow < deadlineUtc)
         {
-            var frame = source.Read();
+            var frame = source.WaitFrame(stallTimeoutMs);
             axes[HMAxis.X] = frame.Wheel;
             axes[HMAxis.Z] = MaybeInvert(frame.Accelerator, options.InvertAccelerator);
             axes[HMAxis.Rz] = MaybeInvert(frame.Brake, options.InvertBrake);
@@ -357,16 +362,17 @@ static class Program
             state.Hat = options.ForwardHat ? HatFromPov(frame.Pov) : HMHat.None;
 
             target?.SubmitState(in state);
+            submits++;
 
             var sec = sw.ElapsedMilliseconds / 1000;
             if (printEveryFrame || sec != lastPrint)
             {
                 lastPrint = sec;
                 var ffbHz = ffb?.TakeReceivedDelta() ?? 0;
-                Console.WriteLine($"wheel={axes[HMAxis.X]:0.000} accel={axes[HMAxis.Z]:0.000} brake={axes[HMAxis.Rz]:0.000} clutch={axes[HMAxis.Y]:0.000} buttons=0x{(uint)state.Buttons:X} hat={state.Hat} ffbHz={ffbHz}");
+                var inHz = submits;
+                submits = 0;
+                Console.WriteLine($"wheel={axes[HMAxis.X]:0.000} accel={axes[HMAxis.Z]:0.000} brake={axes[HMAxis.Rz]:0.000} clutch={axes[HMAxis.Y]:0.000} buttons=0x{(uint)state.Buttons:X} hat={state.Hat} inHz={inHz} ffbHz={ffbHz}");
             }
-
-            Thread.Sleep(delayMs);
         }
 
         return 0;
