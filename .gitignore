@@ -7,7 +7,12 @@
 *.user
 *.log
 
-# Superseded proof of concept, replaced by the standalone g25-gfn-wheel-bridge repo
+# Superseded proof of concept, replaced by gfn-bridge/
 /tools/gfn-g25-bridge-poc/
 # Runtime output of tools/ghub-uninstall/uninstall-ghub.ps1
 /tools/ghub-uninstall/*.transcript.txt
+
+# GFN bridge (.NET) build output and local test artifacts
+/gfn-bridge/**/bin/
+/gfn-bridge/**/obj/
+/gfn-bridge/artifacts/

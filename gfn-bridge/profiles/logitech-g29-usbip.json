@@ -1,0 +1,72 @@
+{
+  "id": "logitech-g29-usbip",
+  "name": "Logitech G29 Driving Force Racing Wheel (USB topology experiment)",
+  "vendor": "Logitech",
+  "vid": "0x046D",
+  "pid": "0xC24F",
+  "versionNumber": 35072,
+  "productString": "G29 Driving Force Racing Wheel",
+  "manufacturerString": "Logitech",
+  "type": "wheel",
+  "connection": "usb",
+  "descriptor": "05010904a1010939150025073500463b0165147504950181420509190129196500250145017501951981027501950381030501093027ffff000047ffff000075109501810209320935093126ff0046ff007508950381020600ff0901950281020600ff0901950181020600ff090226ff0046ff00951075089102c0",
+  "inputDefaults": [
+    { "byte": 9, "value": 129 },
+    { "byte": 10, "value": 128 },
+    { "byte": 11, "value": 156 }
+  ],
+  "notes": "Experimental full-speed USB/IP profile. The device/configuration topology follows a physical G29 in PC/PS3 mode. Interface 0 uses HIDMaestro's existing G29 report descriptor; interface 1 is a safe vendor-defined placeholder until a physical descriptor capture is available.",
+  "layout": {
+    "kind": "wheel",
+    "wheel": { "axis": "X", "rotationDegrees": 900, "forceFeedback": true },
+    "pedals": [
+      { "axis": "Z", "role": "accelerator", "type": "potentiometer" },
+      { "axis": "Rz", "role": "brake", "type": "potentiometer" },
+      { "axis": "Y", "role": "clutch", "type": "potentiometer" }
+    ],
+    "dpad": { "encoding": "hat", "hatAxis": "Hat", "hatPositions": 8 }
+  },
+  "backend": "usbip",
+  "usbConfiguration": {
+    "configurationValue": 1,
+    "attributes": 128,
+    "maxPowerMilliamps": 200,
+    "busSpeed": "full",
+    "deviceDescriptor": "12010002000000406d044fc2008901020001",
+    "configurationDescriptor": "090242000201048064090400000203000000092111010001227b00070581031000020705010340000209040100010300000009211101000122360007058203140002",
+    "interfaces": [
+      {
+        "interfaceNumber": 0,
+        "function": "hid",
+        "altSettings": [
+          {
+            "altSetting": 0,
+            "interfaceClass": 3,
+            "interfaceSubClass": 0,
+            "interfaceProtocol": 0,
+            "endpoints": [
+              { "address": 129, "transferType": "interrupt", "maxPacketSize": 16, "interval": 2 },
+              { "address": 1, "transferType": "interrupt", "maxPacketSize": 64, "interval": 2 }
+            ]
+          }
+        ]
+      },
+      {
+        "interfaceNumber": 1,
+        "function": "hidAux",
+        "altSettings": [
+          {
+            "altSetting": 0,
+            "interfaceClass": 3,
+            "interfaceSubClass": 0,
+            "interfaceProtocol": 0,
+            "reportDescriptor": "0600ff0901a1018501150025ff75089513090181028502951309029102850395130903b1028504950c0904b102850595020905b102c0",
+            "endpoints": [
+              { "address": 130, "transferType": "interrupt", "maxPacketSize": 20, "interval": 2 }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

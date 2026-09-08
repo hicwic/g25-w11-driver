@@ -1,153 +1,132 @@
-# GeForce NOW bridge as an optional component
+# GeForce NOW bridge - packaging plan
 
-Status: design. Branch `feature/geforce-now-wheel-support`.
+Status: planning. Branch `feature/geforce-now-wheel-support`.
 
-This document plans how the GeForce NOW wheel bridge relates to this project.
-Background on *why* a bridge is needed is in `geforce-now.md`.
+Background on *why* a bridge is needed: [geforce-now.md](geforce-now.md). How the
+GFN client actually works: [gfn-client-internals.md](gfn-client-internals.md).
 
-## Decision
+## Decisions (2026-09-08)
 
-The bridge ships as an **optional companion component**, not as part of the
-default driver.
+- **Monorepo.** The bridge moves into `g25-driver/gfn-bridge/`. The standalone
+  `g25-gfn-wheel-bridge` repo is archived. One CI pipeline, one version number,
+  tray and bridge always compatible. Everything is **GPL-2.0-only** (the bridge
+  had no LICENSE, so no history conflict).
+- **Optional component, not default.** The core driver stays pure per-user, no
+  admin. The GFN bridge is a separate opt-in payload with its own elevation.
+- **Elevation via an on-demand Windows service.** The tray runs per-user and
+  cannot elevate silently. A service (`g25gfnbridge`, `start=demand`) does the
+  privileged HIDMaestro work; its SDDL grants the interactive user
+  START/STOP/QUERY so the unprivileged tray can drive it via the SCM. One UAC,
+  at component-install time only.
+- **No G HUB.** Confirmed unnecessary (see geforce-now.md). Prerequisites are
+  just the HIDMaestro driver + the G25 in native mode (which `g25tray` already
+  ensures).
 
-- Source of truth: the standalone repo `g25-gfn-wheel-bridge`
-  (`feature/cleanup-and-plugin-prep`). The older `tools/gfn-g25-bridge-poc/`
-  proof of concept in this repo is superseded and should be removed.
-- It is a separate executable (`g25-gfn-wheel-bridge.exe`, .NET 10), separately
-  versioned, launched and supervised by `g25tray.exe`.
-- It is **not installed by default**. The installer offers it as an unchecked
-  feature with its own consent screen.
-
-### Why not fold it in
-
-| | g25-driver | GFN bridge |
-| --- | --- | --- |
-| Toolchain | C++20 / CMake | .NET 10 |
-| Runtime deps | none | HIDMaestro.Core.dll (~40 MB), .NET runtime, WinRT |
-| Privileges | per-user, never admin | admin + installs a UMDF2 virtual HID driver (self-signed test cert) |
-| Maturity | hardware-validated | steering + FFB validated over GFN, no G HUB needed |
-
-The driver's headline guarantee is "no kernel driver, no admin, no signature
-bypass, pure per-user". A default-on GFN mode that installs a virtual HID driver
-breaks that guarantee for every user, including those who will never use GFN.
-Keeping it as an opt-in companion preserves the guarantee and lets the two
-release on their own cadence.
-
-"Plugin" here means product/UX (one tray, one installer, one project family),
-not an in-process DLL loaded by the driver.
-
-## Architecture
+## Target architecture
 
 ```mermaid
 flowchart LR
-    subgraph Local
-        G[Physical G25 046D:C299] <--> H[Microsoft HID]
-        H --> DI[Local DirectInput games] --> FF[g25ff.dll]
-        H <--> B[g25-gfn-wheel-bridge.exe]
-        B <--> HM[HIDMaestro virtual G29 046D:C24F]
-        T[g25tray.exe] -. supervises .-> B
-        T --> H
+    subgraph User session
+        T[g25tray.exe]
+        DI[Local DirectInput games] --> FF[g25ff.dll]
     end
-    HM <--> GFN[GeForce NOW client] <--> R[Remote game]
+    subgraph Service (LocalSystem, on-demand)
+        S[g25gfnbridge service] --> B[bridge worker]
+    end
+    G[Physical G25 046D:C299] <--> H[Microsoft HID]
     FF --> H
+    B <--> H
+    B <--> HM[HIDMaestro virtual G29 046D:C24F]
+    HM <--> GFN[GeForce NOW client] <--> R[Remote game]
+    T -- SCM start/stop/query --> S
+    S -- status pipe --> T
+    T --> H
+    L[libg25.dll] -.-> FF
+    L -.-> T
+    L -.-> B
 ```
 
-`g25ff.dll` and the bridge never run against the same wheel handle at the same
-time in practice: GFN does not load local DirectInput effect drivers, and local
-DirectInput games do not talk to the virtual G29. The tray still serializes HID
-output access with the existing local mutex.
+Shared writer mutex `Local\g25ff-hid-writer` (rename TBD) serialises HID output
+between `g25tray`, `g25ff.dll` and the bridge worker.
 
-## Shared protocol library
+## Phased plan
 
-`G25Source.cs` and `G25ForceFeedbackRelay.cs` in the bridge duplicate logic this
-repo already owns:
+### Phase 0 - monorepo move
+- Copy the bridge tree into `gfn-bridge/` (`src/`, `profiles/`, `scripts/`,
+  `third_party/HIDMaestro/`, `docs/`, `CHANGELOG.md`, `README.md`, `.sln`).
+  Not `artifacts/` (git-ignored test output).
+- Add SPDX `GPL-2.0-only` headers to the `.cs` files; drop the "no LICENSE" note.
+- Fix relative paths: local SDK `..\..\_tools\dotnet10-sdk` -> `..\..\..\_tools`;
+  doc cross-links `../g25-driver/docs/x` -> `../../docs/x`.
+- Root `.gitignore`: add `gfn-bridge/**/bin/`, `obj/`, `gfn-bridge/artifacts/`.
+- Archive `g25-gfn-wheel-bridge` on GitHub; leave a README pointer.
 
-| Bridge code | This repo | 
-| --- | --- |
-| `G25Source` HID input decode | `src/protocol/logitech_protocol.*` `decode_windows_input`, `InputState` |
-| `G25ForceFeedbackRelay` command bytes | `src/protocol/logitech_protocol.*` `windows_output`, `stop_all`, `disable_autocenter`, `native_mode`, `set_range` |
-| (missing) virtual-G29 report -> G25 command translation | `src/protocol/force_feedback.*` + `src/directinput/effect_math.*` |
+### Phase 1 - `libg25`
+- New CMake static target `libg25` from `src/protocol/*` + the pure-decode parts
+  of `src/device/` (`g25_device` identity/decoding, not the transport).
+- `g25tool`, `g25ff`, `g25tray` link `libg25` instead of compiling the protocol
+  sources directly. No behaviour change; tests stay green.
+- New target `libg25_c` -> `libg25.dll` with a C ABI (`libg25.h`):
+  `g25_identify_model`, `g25_decode_windows_input`, `g25_cmd_native_mode`,
+  `g25_cmd_set_range`, `g25_cmd_stop_all`, `g25_cmd_disable_autocenter`,
+  `g25_ffb_translate` (virtual-G29 report -> G25 command).
+- Vector tests for `g25_ffb_translate` under `tests/`.
 
-Plan:
+### Phase 2 - bridge on `libg25`
+- `gfn-bridge/src/.../Libg25.cs`: P/Invoke wrapper over `libg25.dll`.
+- `G25Source` decode -> `libg25`. `G25ForceFeedbackRelay` translation ->
+  `libg25` (`SendWheelInit` too).
+- Bridge takes the shared writer mutex.
+- Ship `libg25.dll` (x64) with the bridge payload.
 
-1. Carve `src/protocol/` (plus the parts of `src/device/` that are pure decode)
-   into a standalone static/shared library target, `libg25`, with a stable C
-   ABI header (`libg25.h`). No CMake-wide behaviour change; `g25tool`, `g25ff`
-   and `g25tray` link it as they do the sources today.
-2. Add a build artifact `libg25.dll` (C ABI) for consumers outside the C++ tree.
-3. The bridge calls `libg25.dll` through a thin P/Invoke wrapper for input decode
-   and for FFB translation. It stops hand-maintaining the byte layout.
-4. The FFB translation table (virtual G29 classic/extended reports -> G25
-   commands) is implemented once, in `libg25`, and covered by the existing
-   vector tests under `tests/`.
+### Phase 3 - `g25gfnbridge` service
+- `gfn-bridge/service/` - thin Windows service that supervises the bridge worker
+  (restart on crash / USB re-enum), logs to the Event Log + a rolling file.
+- Control: SCM start/stop for enable/disable; a status named pipe
+  (`\\.\pipe\g25gfnbridge`) emitting newline JSON (`state`, `virtual`, `ffb`,
+  `inputHz`, `lastError`).
+- Install (admin, once): `sc create g25gfnbridge start= demand`, `sc sdset` to
+  grant `RP` (start) `WP` (stop) `LC` (query) to `IU` (interactive users),
+  register + install the HIDMaestro driver.
+- The worker can stay the current CLI exe run by the service, or be folded into
+  the service process. Start with the service spawning the exe (least churn).
 
-Until `libg25` exists: the bridge keeps its hand-written decode and marks any
-drift against `docs/protocol.md` in its own `CHANGELOG.md`.
+### Phase 4 - tray integration
+- Probe on menu open: `gfn-bridge/` payload present AND `g25gfnbridge` service
+  registered.
+- Not present -> single item "Install GeForce NOW bridge..." opening the docs /
+  release page. Present -> submenu: status line, "GeForce NOW mode" checkbox
+  (StartService / ControlService STOP), "Start automatically with GeForce NOW".
+- The tray already keeps the G25 native - reuse that; just don't fight the
+  bridge for the writer mutex.
 
-## Tray <-> bridge contract
+### Phase 5 - installers
+- Core installer unchanged (`installer/g25-w11-driver.iss`, per-user).
+- New `installer/g25-gfn-bridge.iss` - **elevated** (`PrivilegesRequired=admin`):
+  drops `gfn-bridge/` payload + `libg25.dll`, installs the HIDMaestro driver,
+  creates + configures the service, its own uninstall (`sc delete`, remove
+  driver, `bridge cleanup`).
+- The core installer / tray offers "Install GeForce NOW bridge" which launches
+  `g25-gfn-bridge-<ver>-setup.exe`.
+- If G HUB is detected, the bridge installer warns and offers to run
+  `block-ghub-winusb.ps1` ([ghub-coexistence.md](ghub-coexistence.md)).
 
-`g25tray.exe` gains a "GeForce NOW mode" menu item:
-
-- Greyed with a tooltip ("optional component not installed") until the bridge
-  payload is present.
-- When enabled: `CreateProcess` the bridge with `bridge --install-driver` on
-  first run, then `bridge` afterwards; show running state; on disable, signal
-  stop and run `bridge cleanup`.
-- Auto-detect: when the GeForce NOW client process appears and GFN mode is
-  enabled, offer to start the bridge (setting, default prompt).
-
-Bridge side (tracked in the bridge repo `docs/plugin-integration.md`):
-
-- Stable CLI and exit codes (0 = clean stop, non-zero + one stderr line).
-- `--json` for `inspect`.
-- A status/control channel (named pipe `\\.\pipe\g25gfn-status`, newline JSON,
-  accepts `stop`) so the tray does not scrape stdout.
-- No UI of its own.
-
-## Installer
-
-- New optional feature "GeForce NOW bridge (advanced)", unchecked by default.
-- Its own page: explains it installs a virtual HID driver (HIDMaestro, UMDF2,
-  self-signed test certificate) and needs Administrator once.
-- Install: copy the bridge payload next to `g25tray.exe`, register the
-  HIDMaestro driver.
-- Uninstall / feature-disable: `bridge cleanup`, then remove the HIDMaestro
-  driver, then remove the payload. The core driver uninstall path is unchanged.
-- CI: a second job builds the .NET bridge; release bundles it as a separate
-  asset and inside the installer's optional feature.
-
-## Settled by the 2026-09-08 testing
-
-- **It works.** Steering + FFB in Wreckfest over GeForce NOW, `logitech-g29-usbip`
-  profile, exactly one virtual G29.
-- **No G HUB needed.** Confirmed with G HUB fully uninstalled + rebooted. The
-  plugin's only prerequisites are the **HIDMaestro driver** and the **physical
-  G25 in native mode**. This removes the `logi_win_usb.inf` WinUSB conflict and
-  the scheduled-task work from the plugin entirely (those notes stay in
-  `ghub-coexistence.md` only for users who run G HUB for other devices).
-- **The `:0100` trap.** A stale HIDMaestro UMDF virtual G29 makes GFN reject the
-  wheel. The bridge now purges stale virtual G29s before starting.
-- **Wheel bring-up** (stop forces, autocenter off, range) is done by the bridge
-  (`SendWheelInit`), replacing what G HUB used to do.
-
-### Revised prerequisites
-
-1. HIDMaestro UMDF driver installed (bridge `--install-driver`, admin, once).
-2. Physical G25 in native mode - `g25tray.exe` already handles this.
-3. That's it. No G HUB, no `logi_*` drivers.
+### Phase 6 - CI/CD
+- `release.yml`: after the C++ build, `actions/setup-dotnet@v4` (10.x),
+  `dotnet publish -c Release -r win-x64` the bridge (self-contained), bundle
+  HIDMaestro + profiles + `libg25.dll`, run `ISCC` on the second `.iss`, attach
+  `g25-gfn-bridge-<ver>-setup.exe` to the release.
+- `ci.yml` / `dev.yml`: add `dotnet build` + `dotnet test` for the bridge.
+- One `G25_VERSION` drives both installers.
+- Unsigned for now - note SmartScreen; a signing cert is out of scope.
 
 ## Open questions
 
-1. **FFB translation.** Passthrough works and feels right but is not
-   protocol-accurate. Build a real virtual-G29 -> G25 table in `libg25`. See the
-   bridge's `docs/ffb-protocol.md`.
-2. **Licensing.** If `libg25` (GPL-2.0-only) is linked into the bridge, the
-   bridge's own license must be GPL-compatible. Currently undecided; the bridge
-   repo has no LICENSE yet.
-3. **G27 and others.** The bridge's profile system already generalizes; the
-   shared library identifies G25/G27/G29. Generalizing is a later milestone.
-4. **Interaction if G HUB *is* installed** (user has other Logitech gear):
-   `logi_win_usb.inf` still grabs the G25, and the `logi_joy_hid` filter renames
-   the virtual G29. Both are handled today (`block-ghub-winusb.ps1`, the stale
-   purge) but the installer should detect G HUB and warn / offer to run the
-   WinUSB block.
+1. **FFB translation fidelity.** Passthrough feels right; a real table
+   (`g25_ffb_translate`) is Phase 1/2 work. `docs/ffb-protocol.md` in the bridge.
+2. **.NET 10 on CI runners.** windows-2022 needs `setup-dotnet` with an explicit
+   10.x SDK (still new). Confirm availability or pin a version.
+3. **Service worker: separate exe vs in-process.** Start with separate exe
+   (current bridge CLI), revisit if the pipe/supervision gets awkward.
+4. **G27 / other wheels.** Profile system + `libg25` model identification already
+   generalise; a later milestone.
