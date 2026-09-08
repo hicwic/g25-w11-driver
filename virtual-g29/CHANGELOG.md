@@ -7,6 +7,12 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-08
+
+Local-game force feedback via the virtual G29, Forza Horizon 4 support, the
+tray wheel-range wired into G29 mode, and clean handling of the G25 being
+unplugged mid-session.
+
 ### Added - force feedback in local games (2026-09-08)
 
 The virtual G29 now works as a real FFB wheel for **local** DirectInput games,
