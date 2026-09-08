@@ -7,14 +7,24 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+### Added - `latency` command (2026-09-08)
+
+`g25-virtual-g29.exe latency [--seconds N]` measures the input pipeline:
+report rate + inter-report gap on each side, and the G25->G29 added latency
+(mid-point-crossing match on a pedal stab / wheel flick, with a steering
+cross-correlation check). Prints median / p90 / p99 and a distribution
+histogram. Measured on one machine: G25 ~360 Hz, G29 ~400 Hz, added latency
+median ~1 ms, p90 ~11 ms. See README "Performance (measured)".
+
 ### Changed - event-driven submit loop (2026-09-08)
 
 `PumpG25` now blocks on a new decoded G25 frame instead of polling a cached
 value on a fixed `Thread.Sleep`. The virtual G29 is fed at the wheel's own
-report rate (~250 Hz measured) instead of ~64 Hz (`Sleep(4)` was rounding up to
-the 15.6 ms Windows timer tick). No `timeBeginPeriod`, so no system-wide timer
-pressure. `--rate-hz` now bounds only the idle resubmit rate. Telemetry line
-gains `inHz=`.
+report rate (~250-400 Hz measured, tracks the Windows timer resolution) instead
+of ~64 Hz (`Sleep(4)` was rounding up to the 15.6 ms Windows timer tick), which
+also cut the bridge's own added latency from a ~8 ms median to ~1 ms. No
+`timeBeginPeriod`, so no system-wide timer pressure. `--rate-hz` now bounds only
+the idle resubmit rate. Telemetry line gains `inHz=`.
 
 ### Added - hide the physical G25 from local games (2026-09-08)
 
