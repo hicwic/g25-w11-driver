@@ -32,6 +32,14 @@ enumerating as `046D:C24F:0100`; GFN could not match it
 (`No known device with interface number 0`) and it jammed the wheel input path.
 
 ### Added
+- **`Libg25.cs`**: P/Invoke over `libg25.dll` (driver `src/libg25/`). `G25Source`
+  decodes the input report and `G25ForceFeedbackRelay` builds the wheel commands
+  and translates FFB through it, instead of hand-maintaining the byte layout.
+  `libg25.dll` is copied next to the exe (`Libg25Dll` MSBuild property; build
+  errors if missing).
+- The bridge takes the shared HID writer mutex `Local\g25tool-output-v1` (same
+  one g25tool / g25ff.dll / g25tray use) so it does not fight them on the G25
+  output endpoint.
 - Split `Program.cs` into `Program.cs`, `BridgeOptions.cs`, `G25Source.cs`,
   `G25ForceFeedbackRelay.cs`, `PnpSnapshot.cs`.
 - Default profile is now `logitech-g29-usbip` (was `logitech-g29`).

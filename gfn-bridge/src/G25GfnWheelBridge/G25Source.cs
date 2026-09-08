@@ -117,20 +117,17 @@ sealed class G25Source : IDisposable
             try
             {
                 var count = _stream.Read(_report, 0, _report.Length);
-                if (count != _report.Length || _report[0] != 0) continue;
+                if (count != _report.Length) continue;
 
-                var p = _report.AsSpan(1);
-                var packed = (uint)(p[0] | p[1] << 8 | p[2] << 16 | p[3] << 24);
-                var buttonMask = (packed >> 4) & 0x7FFFF;
-                var wheel = (p[3] >> 2) | (p[4] << 6);
-                var hat = p[0] & 0x0F;
+                var decoded = Libg25.DecodeInput(_report);
+                if (decoded is not { } s) continue;
                 Volatile.Write(ref _latest, new G25Frame(
-                    wheel / 16383f,
-                    p[5] / 255f,
-                    p[6] / 255f,
-                    p[7] / 255f,
-                    buttonMask,
-                    hat <= 7 ? hat * 4500 : -1));
+                    s.Wheel / 16383f,
+                    s.Throttle / 255f,
+                    s.Brake / 255f,
+                    s.Clutch / 255f,
+                    s.Buttons,
+                    s.Hat <= 7 ? s.Hat * 4500 : -1));
                 _firstFrame.Set();
             }
             catch (TimeoutException)

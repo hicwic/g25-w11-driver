@@ -73,12 +73,15 @@ between `g25tray`, `g25ff.dll` and the bridge worker.
 - `tests/libg25_tests.cpp` - golden vectors shared with `protocol_tests`, runs
   on the ubuntu `portable` CI job.
 
-### Phase 2 - bridge on `libg25`
-- `gfn-bridge/src/.../Libg25.cs`: P/Invoke wrapper over `libg25.dll`.
-- `G25Source` decode -> `libg25`. `G25ForceFeedbackRelay` translation ->
-  `libg25` (`SendWheelInit` too).
-- Bridge takes the shared writer mutex.
-- Ship `libg25.dll` (x64) with the bridge payload.
+### Phase 2 - bridge on `libg25` (done)
+- `gfn-bridge/src/.../Libg25.cs`: `LibraryImport` over `libg25.dll`.
+- `G25Source.ReadLoop` decodes via `g25_decode_input`.
+- `G25ForceFeedbackRelay`: `SendWheelInit` uses `g25_cmd_*`, `Enqueue` uses
+  `g25_ffb_translate`. Hand-rolled byte literals removed.
+- Bridge takes `Local\g25tool-output-v1` (5 s timeout, then best-effort).
+- `libg25.dll` copied next to the exe via the `Libg25Dll` MSBuild property;
+  `Build` errors if it is missing.
+- Verified: `dry-run` decodes the real G25 through the DLL.
 
 ### Phase 3 - `g25gfnbridge` service
 - `gfn-bridge/service/` - thin Windows service that supervises the bridge worker

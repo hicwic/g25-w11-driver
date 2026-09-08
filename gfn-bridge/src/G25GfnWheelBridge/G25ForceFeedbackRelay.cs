@@ -9,26 +9,15 @@ namespace G25GfnWheelBridge;
 /// physical G25 output endpoint.
 /// </summary>
 /// <remarks>
-/// KNOWN LIMITATION: this is currently a near-raw passthrough. It copies the
-/// first seven bytes of every output report straight to the G25 8-byte output
-/// report. It assumes the bytes the virtual G29 receives are already in the
-/// Logitech "classic" wheel command format that the G25 understands.
-///
-/// That holds only partly:
-///  - the G29 in native mode uses an extended command set that differs from the
-///    G25/G27 classic set (constant-force scaling, spring/damper parameters,
-///    autocenter);
-///  - no effect-slot management, scaling or rate limiting is done here.
-///
-/// The real translation table is tracked in docs/ffb-protocol.md. The Linux
-/// kernel driver hid-lg4ff.c is the reference for the per-model differences.
+/// Translation is delegated to <c>libg25.dll</c> (<c>g25_ffb_translate</c>).
+/// Phase 1 of that function is a passthrough of the classic-format reports the
+/// virtual G29 receives; a protocol-accurate table is future work
+/// (docs/ffb-protocol.md, hid-lg4ff.c).
 /// </remarks>
 sealed class G25ForceFeedbackRelay : IDisposable
 {
     private const int LogitechVendorId = 0x046D;
     private const int G25NativeProductId = 0xC299;
-    private static readonly byte[] StopAll = [0, 0xF3, 0, 0, 0, 0, 0, 0];
-    private static readonly byte[] DisableAutocenter = [0, 0xF5, 0, 0, 0, 0, 0, 0];
 
     private static readonly TimeSpan ReconnectWindow = TimeSpan.FromSeconds(30);
 
@@ -47,26 +36,19 @@ sealed class G25ForceFeedbackRelay : IDisposable
         Console.WriteLine($"Force feedback output opened: {productName}");
     }
 
-    // G25 SET_RANGE (classic), same encoding lg4ff uses for G25/G27/G29:
-    // f8 81 <range lo> <range hi>. 900 deg -> 0x0384.
-    private static byte[] SetRange(int degrees)
-    {
-        var r = Math.Clamp(degrees, 40, 900);
-        return [0, 0xF8, 0x81, (byte)(r & 0xFF), (byte)((r >> 8) & 0xFF), 0, 0, 0];
-    }
-
     /// <summary>
     /// Bring the physical G25 to a known state: stop forces, disable autocenter,
     /// set rotation range. Without G HUB running, nothing else does this.
     /// </summary>
     public void SendWheelInit(int rangeDegrees)
     {
-        _commands.TryAdd((byte[])StopAll.Clone());
-        _commands.TryAdd((byte[])DisableAutocenter.Clone());
-        if (rangeDegrees > 0)
+        _commands.TryAdd(Libg25.StopAll());
+        _commands.TryAdd(Libg25.DisableAutocenter());
+        var range = Libg25.SetRange(rangeDegrees);
+        if (range != null)
         {
-            _commands.TryAdd(SetRange(rangeDegrees));
-            Console.WriteLine($"Wheel init: stop forces, autocenter off, range {Math.Clamp(rangeDegrees, 40, 900)} deg.");
+            _commands.TryAdd(range);
+            Console.WriteLine($"Wheel init: stop forces, autocenter off, range {rangeDegrees} deg.");
         }
         else
         {
@@ -122,11 +104,10 @@ sealed class G25ForceFeedbackRelay : IDisposable
 
     public void Enqueue(ReadOnlySpan<byte> rawG29Report)
     {
-        if (_failure != null || rawG29Report.Length < 7) return;
+        if (_failure != null || rawG29Report.Length < 1) return;
 
-        var report = new byte[8];
-        rawG29Report[..7].CopyTo(report.AsSpan(1));
-        if (!_commands.TryAdd(report)) Interlocked.Increment(ref _dropped);
+        foreach (var report in Libg25.FfbTranslate(rawG29Report))
+            if (!_commands.TryAdd(report)) Interlocked.Increment(ref _dropped);
     }
 
     private void WriteLoop()
@@ -155,8 +136,8 @@ sealed class G25ForceFeedbackRelay : IDisposable
 
         try
         {
-            _stream.Write(StopAll);
-            _stream.Write(DisableAutocenter);
+            _stream.Write(Libg25.StopAll());
+            _stream.Write(Libg25.DisableAutocenter());
         }
         catch (Exception ex)
         {

@@ -182,6 +182,10 @@ static class Program
         using var target = ctx.CreateController(profile);
         ctx.FinalizeNames();
 
+        // Serialise G25 HID output with g25tool / g25ff.dll / g25tray, which take
+        // the same mutex around their writes.
+        using var writerLock = AcquireWriterLock();
+
         // Creating a USB/IP controller can re-enumerate the physical USB tree.
         // Open the source only after the virtual controller has settled so the
         // DirectInput handle does not become stale during startup.
@@ -372,6 +376,29 @@ static class Program
     {
         using var identity = WindowsIdentity.GetCurrent();
         return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
+    // Same name g25tool / g25ff.dll / g25tray use (src/device/g25_device.cpp).
+    const string WriterMutexName = @"Local\g25tool-output-v1";
+
+    static IDisposable AcquireWriterLock()
+    {
+        var mutex = new Mutex(false, WriterMutexName);
+        bool held;
+        try { held = mutex.WaitOne(TimeSpan.FromSeconds(5)); }
+        catch (AbandonedMutexException) { held = true; }
+        if (!held)
+            Console.Error.WriteLine("Could not take the shared G25 writer lock in 5s; proceeding anyway.");
+        return new Releaser(mutex, held);
+    }
+
+    sealed class Releaser(Mutex mutex, bool held) : IDisposable
+    {
+        public void Dispose()
+        {
+            if (held) { try { mutex.ReleaseMutex(); } catch { } }
+            mutex.Dispose();
+        }
     }
 
     static float MaybeInvert(float value, bool invert) => invert ? 1f - value : value;
