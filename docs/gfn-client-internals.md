@@ -59,16 +59,16 @@ virtual G29 (2026-09-08). Goal: understand whether G HUB is really required.
 
 ## Consequences
 
-Two ways to drop G HUB, both plausible:
+### A. Virtual G29, no G HUB - DONE, works (2026-09-08)
 
-### A. Virtual G29, no G HUB
-GFN uses DirectInput, which works without G HUB. The bridge + HIDMaestro already
-present a valid `:8900` G29. If the bridge sends the classic init (`F3`/`F5`)
-itself at start, G HUB's bring-up is covered. **Never tested cleanly** - every
-no-G HUB run so far used the wrong profile or had the stale `:0100` device.
-Cheap to try.
+Confirmed with G HUB fully uninstalled + rebooted: full steering and FFB. The
+bridge sends `F3` / `F5` / SET_RANGE at startup (`SendWheelInit`) to cover the
+bring-up G HUB used to do. This is the shipping approach.
 
-### B. No virtual device at all - teach GFN the real G25
+### B. No virtual device at all - teach GFN the real G25 (not pursued)
+
+Rejected by the user - editing GeForce NOW's files risks the ToS / an account
+ban. Kept here only as a note.
 GFN already enumerates `046D:C299` via DirectInput and only drops it for not
 being in `RIDevices.json`. If `046D:C299` + a G25 device definition can be added
 (via the local/bundled RIDevices.json, or an override path if one exists), GFN
@@ -77,11 +77,7 @@ G HUB - `g25tray` just keeps the wheel native. The G25 report layout and FFB
 command format are already in `src/protocol/`. Blocker: whether the local
 RIDevices.json can be edited / merged and whether it is signature-checked.
 
-## Next probes
+## Status
 
-1. Clean no-G HUB test (path A) - fixed bridge, single `:8900` G29, usbip
-   profile, G HUB uninstalled.
-2. Capture the `RIDevices.json` request (Fiddler / mitmproxy with cert, or
-   `pktmon` + TLS key log) during a session to get URL + schema.
-3. Check whether `Geronimo.dll`'s bundled RIDevices.json can be located and
-   whether GFN merges a local file over the downloaded one.
+Path A is done and shipping. Path B (RIDevices.json) is not being pursued.
+No further probes planned.

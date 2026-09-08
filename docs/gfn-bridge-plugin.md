@@ -25,7 +25,7 @@ default driver.
 | Toolchain | C++20 / CMake | .NET 10 |
 | Runtime deps | none | HIDMaestro.Core.dll (~40 MB), .NET runtime, WinRT |
 | Privileges | per-user, never admin | admin + installs a UMDF2 virtual HID driver (self-signed test cert) |
-| Maturity | hardware-validated | prototype, FFB unverified |
+| Maturity | hardware-validated | steering + FFB validated over GFN, no G HUB needed |
 
 The driver's headline guarantee is "no kernel driver, no admin, no signature
 bypass, pure per-user". A default-on GFN mode that installs a virtual HID driver
@@ -118,26 +118,36 @@ Bridge side (tracked in the bridge repo `docs/plugin-integration.md`):
 
 ## Settled by the 2026-09-08 testing
 
-- **It works.** Steering + FFB in Wreckfest over GeForce NOW, with G HUB
-  running, the `logitech-g29-usbip` profile, and exactly one virtual G29.
+- **It works.** Steering + FFB in Wreckfest over GeForce NOW, `logitech-g29-usbip`
+  profile, exactly one virtual G29.
+- **No G HUB needed.** Confirmed with G HUB fully uninstalled + rebooted. The
+  plugin's only prerequisites are the **HIDMaestro driver** and the **physical
+  G25 in native mode**. This removes the `logi_win_usb.inf` WinUSB conflict and
+  the scheduled-task work from the plugin entirely (those notes stay in
+  `ghub-coexistence.md` only for users who run G HUB for other devices).
 - **The `:0100` trap.** A stale HIDMaestro UMDF virtual G29 makes GFN reject the
   wheel. The bridge now purges stale virtual G29s before starting.
-- **G HUB WinUSB-claims the physical G25.** `logi_win_usb.inf` matches the
-  compat-mode `C294` id. Must be removed from the driver store; the installer /
-  a scheduled task should keep it removed. See
-  [ghub-coexistence.md](ghub-coexistence.md). **This is the main open work item
-  for making the plugin robust.**
+- **Wheel bring-up** (stop forces, autocenter off, range) is done by the bridge
+  (`SendWheelInit`), replacing what G HUB used to do.
+
+### Revised prerequisites
+
+1. HIDMaestro UMDF driver installed (bridge `--install-driver`, admin, once).
+2. Physical G25 in native mode - `g25tray.exe` already handles this.
+3. That's it. No G HUB, no `logi_*` drivers.
 
 ## Open questions
 
-1. **Keep `logi_win_usb.inf` off the machine automatically.** Installer removes
-   it + a scheduled task re-removes it after G HUB updates (option 2 in
-   `ghub-coexistence.md`).
-2. **FFB translation.** Passthrough works but is not protocol-accurate. Build a
-   real virtual-G29 -> G25 table in `libg25`. See the bridge's
-   `docs/ffb-protocol.md`.
-3. **Licensing.** If `libg25` (GPL-2.0-only) is linked into the bridge, the
+1. **FFB translation.** Passthrough works and feels right but is not
+   protocol-accurate. Build a real virtual-G29 -> G25 table in `libg25`. See the
+   bridge's `docs/ffb-protocol.md`.
+2. **Licensing.** If `libg25` (GPL-2.0-only) is linked into the bridge, the
    bridge's own license must be GPL-compatible. Currently undecided; the bridge
    repo has no LICENSE yet.
-4. **G27 and others.** The bridge's profile system already generalizes; the
+3. **G27 and others.** The bridge's profile system already generalizes; the
    shared library identifies G25/G27/G29. Generalizing is a later milestone.
+4. **Interaction if G HUB *is* installed** (user has other Logitech gear):
+   `logi_win_usb.inf` still grabs the G25, and the `logi_joy_hid` filter renames
+   the virtual G29. Both are handled today (`block-ghub-winusb.ps1`, the stale
+   purge) but the installer should detect G HUB and warn / offer to run the
+   WinUSB block.

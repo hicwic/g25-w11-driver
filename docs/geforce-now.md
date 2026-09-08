@@ -165,20 +165,32 @@ Test procedure:
 4. Check: does the virtual G29 still get detected? Does it still receive output
    reports (`--trace-output`)? Does steering still work?
 
-### Result (2026-09-08): works. Root cause was a stale virtual device, not G HUB.
+### Result (2026-09-08): works, and G HUB is NOT required.
 
-After a long detour (G HUB uninstall / reinstall, wrong profile, a WinUSB
-mis-claim on the physical G25 during a chaotic mid-reset), the bridge was
-brought back to a **fully working** state: steering **and** force feedback in
-Wreckfest over GeForce NOW.
+Two things were established, in order:
 
-**Working recipe:**
+1. The bridge works: steering **and** force feedback in Wreckfest over GeForce
+   NOW.
+2. **G HUB is not needed at all.** Tested with G HUB stopped, then with G HUB
+   fully uninstalled (no `LGHUB` service, no `logi_*` drivers, rebooted): still
+   full steering + FFB. `1577` constant-force reports over `198` distinct
+   magnitudes while driving. Evidence:
+   `tools/ghub-uninstall/bridge-trace-no-ghub-working.txt`.
 
-- Logitech G HUB installed and running (as NVIDIA requires).
+NVIDIA's "G HUB running in the background" requirement does not apply to this
+virtual-device approach - the GFN client handles the wheel through DirectInput
+and has no G HUB hooks (see [gfn-client-internals.md](gfn-client-internals.md)).
+G HUB's only functional contribution was device bring-up (stop forces,
+autocenter off, range), which the bridge now does itself (`SendWheelInit`).
+
+**Working recipe (no G HUB):**
+
+- HIDMaestro driver installed (`bridge --install-driver` once).
 - Bridge profile `logitech-g29-usbip` - the USB/IP backend, full USB descriptor,
   `bcdDevice 0x8900`. GeForce NOW enumerates it as `046D:C24F:8900`.
 - Exactly **one** virtual G29 present.
 - Physical G25 in native mode (`046D:C299`).
+- The bridge sends `F3` / `F5` / SET_RANGE to the G25 at startup.
 
 **Root cause of "detected but no input":** GeForce NOW keys wheels on
 `VID:PID:bcdDevice`. Earlier failed test runs with the default `logitech-g29`
@@ -200,27 +212,25 @@ From `geronimo.log`, GeForce NOW's supported-wheel list (`GSHID: Supporting`):
 `06A3:075C/0762`, `0738:2221/A221`.
 
 **Confirmed FFB** (`--trace-output`, driving): `1108 XX 80` constant-force
-reports with `XX` sweeping `0x1B..0xE5` around centre `0x80`, plus `210C..`
-condition effects - real road/collision forces, not just the `FE0D`/`14` G HUB
-keepalive.
+reports with `XX` sweeping the full range, plus `210C..` condition effects -
+real road/collision forces. The `FE0D`/`14` keepalive and the `13`/`F3` init
+came from G HUB's `logi_joy_hid` filter and disappeared once G HUB was
+uninstalled; the wheel still worked without them.
 
-**G HUB:** not re-tested in a fully clean no-G HUB state, but it is required per
-NVIDIA and works with it. A clean G HUB install adopts the virtual G29
-(`logi_joy_hid_filter` on interface 0) and leaves the physical G25 on native
-HID. The WinUSB claim on the G25 seen mid-session was a one-off from installing
-G HUB while the wheel was mid-re-enumeration; a reboot-clean install did not
-repeat it.
+**G HUB WinUSB claim:** with G HUB installed, `logi_win_usb.inf` grabs the G25
+in compat mode - see [ghub-coexistence.md](ghub-coexistence.md). Since G HUB is
+not needed, the simplest answer for GFN wheel use is to not have G HUB
+installed. Keep the coexistence notes for users who run G HUB for other devices.
 
-**Bridge changes from this session:** default profile is now
-`logitech-g29-usbip`; `bridge` purges stale virtual G29 nodes (incl. the
-`:0100` UMDF one) before creating its own, `--keep-existing` opts out;
-`G25Source` / `G25ForceFeedbackRelay` reconnect on USB re-enumeration instead of
-exiting.
+**Bridge changes from this session:** default profile `logitech-g29-usbip`;
+`bridge` purges stale virtual G29 nodes (incl. the `:0100` UMDF one) before
+creating its own (`--keep-existing` opts out); `G25Source` /
+`G25ForceFeedbackRelay` reconnect on USB re-enumeration; `SendWheelInit` sends
+`F3` + `F5` + SET_RANGE to the G25 at startup (`--wheel-range`, default 900).
 
-Evidence: `tools/ghub-uninstall/bridge-trace-working.txt`,
-`tools/ghub-uninstall/bridge-trace-no-ghub.txt` (early failed run).
-
-Reinstall path for G HUB: `https://www.logitechg.com/software/g-hub`.
+Evidence: `tools/ghub-uninstall/bridge-trace-no-ghub-working.txt` (no G HUB,
+full FFB), `bridge-trace-working.txt` (with G HUB), `bridge-trace-no-ghub.txt`
+(early failed run, wrong profile).
 
 ## Additional references for virtual HID research
 

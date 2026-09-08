@@ -1,4 +1,4 @@
-﻿Logitech / G HUB / HIDMaestro footprint - 2026-09-08 11:23:52
+﻿Logitech / G HUB / HIDMaestro footprint - 2026-09-08 13:23:22
 
 === Uninstall entries ===
 
@@ -7,60 +7,6 @@
 
 
 === Drivers (pnputil, logi / hidmaestro) ===
-Nom publiÚá:     oem25.inf
-Nom dÆorigineá:      hidmaestro.inf
-Nom du fournisseurá:      HIDMaestro
-Nom de la classeá:         HIDClass
-GUID de la classeá:         {745a17a0-74d3-11d0-b6fe-00a0c90f57da}
-Version du piloteá:     09/03/2026 1.4.7.48
-Nom du signataireá:        HIDMaestroTestCert
-Attributsá:         Legacy
-
-Nom dÆorigineá:      hidmaestro.inf
-Nom du fournisseurá:      HIDMaestro
-Nom de la classeá:         HIDClass
-GUID de la classeá:         {745a17a0-74d3-11d0-b6fe-00a0c90f57da}
-Version du piloteá:     09/03/2026 1.4.7.48
-Nom du signataireá:        HIDMaestroTestCert
-Attributsá:         Legacy
-Version WHCPá:       Inconnu
-
-Version du piloteá:     09/03/2026 1.4.7.48
-Nom du signataireá:        HIDMaestroTestCert
-Attributsá:         Legacy
-Version WHCPá:       Inconnu
-
-Nom publiÚá:     oem26.inf
-Nom dÆorigineá:      hidmaestro_xusb.inf
-Nom du fournisseurá:      HIDMaestro
-
-Nom publiÚá:     oem26.inf
-Nom dÆorigineá:      hidmaestro_xusb.inf
-Nom du fournisseurá:      HIDMaestro
-Nom de la classeá:         System
-GUID de la classeá:         {4d36e97d-e325-11ce-bfc1-08002be10318}
-Version du piloteá:     09/03/2026 1.4.7.48
-Nom du signataireá:        HIDMaestroTestCert
-Attributsá:         Legacy
-
-Nom dÆorigineá:      hidmaestro_xusb.inf
-Nom du fournisseurá:      HIDMaestro
-Nom de la classeá:         System
-GUID de la classeá:         {4d36e97d-e325-11ce-bfc1-08002be10318}
-Version du piloteá:     09/03/2026 1.4.7.48
-Nom du signataireá:        HIDMaestroTestCert
-Attributsá:         Legacy
-Version WHCPá:       Inconnu
-
-Version du piloteá:     09/03/2026 1.4.7.48
-Nom du signataireá:        HIDMaestroTestCert
-Attributsá:         Legacy
-Version WHCPá:       Inconnu
-
-Nom publiÚá:     oem44.inf
-Nom dÆorigineá:      linino.inf
-Nom du fournisseurá:      Linino
-
 Nom publiÚá:     oem20.inf
 Nom dÆorigineá:      logitechble.inf
 Nom du fournisseurá:      Logitech
@@ -75,42 +21,44 @@ Attributsá:         Legacy
 Status  Class    FriendlyName                                                                                   InstanceId                                         
 ------  -----    ------------                                                                                   ----------                                         
 OK      HIDClass Clavier tactile compatible HID                                                                 HID\VID_046D&PID_C548&MI_03\9&848DE35&0&0000       
-Unknown HIDClass Contrôleur de jeu HID                                                                          HID\VID_046D&PID_C294\7&2214DCBE&3&0000            
+Unknown HIDClass Contrôleur de jeu HID                                                                          HID\VID_046D&PID_C294\7&2214DCBE&4&0000            
+OK      HIDClass Contrôleur de jeu HID                                                                          HID\VID_046D&PID_C24F&MI_00\4&1C42042D&0&0000      
 OK      HIDClass Contrôleur de jeu HID                                                                          HID\VID_046D&PID_C299\7&146EAE03&2&0000            
-Unknown HIDClass Contrôleur système HID                                                                         HID\VID_046D&PID_C316&MI_01&COL02\8&1C72DFD6&0&0001
+Unknown HIDClass Contrôleur de jeu HID                                                                          HID\VID_046D&PID_C294\7&2214DCBE&6&0000            
+Unknown HIDClass Contrôleur de jeu HID                                                                          HID\VID_046D&PID_C294\7&2214DCBE&5&0000            
 OK      HIDClass Contrôleur système HID                                                                         HID\VID_046D&PID_C548&MI_01&COL03\9&37CFF6BF&0&0002
+Unknown HIDClass Contrôleur système HID                                                                         HID\VID_046D&PID_C316&MI_01&COL02\8&1C72DFD6&0&0001
 Unknown HIDClass Contrôleur système HID                                                                         HID\VID_046D&PID_C534&MI_01&COL03\9&205BA122&0&0002
-OK      HIDClass G29 Driving Force Racing Wheel                                                                 HID\HIDCLASS\1&2D595CA7&5&0000                     
-OK      HIDClass G29 Driving Force Racing Wheel                                                                 ROOT\HIDCLASS\0000                                 
 OK      HIDClass Logitech USB Input Device                                                                      USB\VID_046D&PID_C548&MI_00\8&36724015&0&0000      
 OK      HIDClass Périphérique conforme aux Périphériques d'interface utilisateur (HID)                          HID\VID_046D&PID_C548&MI_01&COL04\9&37CFF6BF&0&0003
-Unknown HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C24F&MI_01\3&8C974E5&1&0001       
+Unknown HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C534&MI_01\8&4F54FA3&0&0001       
+OK      HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C548&MI_02\8&36724015&0&0002      
+OK      HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C24F&MI_01\3&8C974E5&7&0001       
 OK      HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C299\6&280C46C8&0&1               
 Unknown HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C316&MI_00\7&18E19848&0&0000      
-OK      HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C548&MI_02\8&36724015&0&0002      
-Unknown HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C534&MI_00\8&4F54FA3&0&0000       
-Unknown HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C534&MI_01\8&4F54FA3&0&0001       
-OK      HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C548&MI_01\8&36724015&0&0001      
-OK      HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C548&MI_03\8&36724015&0&0003      
 Unknown HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C294\6&280C46C8&0&1               
+Unknown HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C534&MI_00\8&4F54FA3&0&0000       
+OK      HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C548&MI_03\8&36724015&0&0003      
+OK      HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C548&MI_01\8&36724015&0&0001      
+OK      HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C24F&MI_00\3&8C974E5&7&0000       
 Unknown HIDClass Périphérique d’entrée USB                                                                      USB\VID_046D&PID_C316&MI_01\7&18E19848&0&0001      
 OK      HIDClass Périphérique de contrôle consommateur conforme aux Périphériques d'interface utilisateur (HID) HID\VID_046D&PID_C548&MI_01&COL02\9&37CFF6BF&0&0001
 Unknown HIDClass Périphérique de contrôle consommateur conforme aux Périphériques d'interface utilisateur (HID) HID\VID_046D&PID_C534&MI_01&COL02\9&205BA122&0&0001
 Unknown HIDClass Périphérique de contrôle consommateur conforme aux Périphériques d'interface utilisateur (HID) HID\VID_046D&PID_C316&MI_01&COL01\8&1C72DFD6&0&0000
-Unknown HIDClass Périphérique fournisseur HID                                                                   HID\VID_046D&PID_C24F&MI_01\4&18CDB45B&0&0000      
+OK      HIDClass Périphérique fournisseur HID                                                                   HID\VID_046D&PID_C24F&MI_01\4&911E7EF&0&0000       
 OK      HIDClass Périphérique fournisseur HID                                                                   HID\VID_046D&PID_C548&MI_02&COL01\9&200C6A7A&0&0000
-Unknown HIDClass Périphérique fournisseur HID                                                                   HID\VID_046D&PID_C534&MI_01&COL05\9&205BA122&0&0004
 Unknown HIDClass Périphérique fournisseur HID                                                                   HID\VID_046D&PID_C534&MI_01&COL04\9&205BA122&0&0003
 OK      HIDClass Périphérique fournisseur HID                                                                   HID\VID_046D&PID_C548&MI_02&COL02\9&200C6A7A&0&0001
+Unknown HIDClass Périphérique fournisseur HID                                                                   HID\VID_046D&PID_C534&MI_01&COL05\9&205BA122&0&0004
 Unknown Keyboard Périphérique clavier PIH                                                                       HID\VID_046D&PID_C534&MI_00\9&338BBD60&0&0000      
 OK      Keyboard Périphérique clavier PIH                                                                       HID\VID_046D&PID_C548&MI_00\9&13F8B8FD&0&0000      
 Unknown Keyboard Périphérique clavier PIH                                                                       HID\VID_046D&PID_C316&MI_00\8&4AF5391&0&0000       
-OK      Mouse    Souris HID                                                                                     HID\VID_046D&PID_C548&MI_01&COL01\9&37CFF6BF&0&0000
 Unknown Mouse    Souris HID                                                                                     HID\VID_046D&PID_C534&MI_01&COL01\9&205BA122&0&0000
-Unknown USB      Périphérique USB composite                                                                     USB\VID_046D&PID_C24F\2&1420F598&0&1               
-Unknown USB      Périphérique USB composite                                                                     USB\VID_046D&PID_C316\6&280C46C8&0&1               
+OK      Mouse    Souris HID                                                                                     HID\VID_046D&PID_C548&MI_01&COL01\9&37CFF6BF&0&0000
 OK      USB      Périphérique USB composite                                                                     USB\VID_046D&PID_C548\7&1A2346B9&0&2               
-Unknown USB      Périphérique USB composite                                                                     USB\VID_046D&PID_C534\7&CFD1989&0&3
+Unknown USB      Périphérique USB composite                                                                     USB\VID_046D&PID_C316\6&280C46C8&0&1               
+Unknown USB      Périphérique USB composite                                                                     USB\VID_046D&PID_C534\7&CFD1989&0&3                
+OK      USB      Périphérique USB composite                                                                     USB\VID_046D&PID_C24F\2&1420F598&0&1
 
 === Run keys (logi / LGHUB) ===
 
@@ -128,7 +76,7 @@ C:\Program Files\Logitech  exists=True
 
 Name                         Id Path                                                          
 ----                         -- ----                                                          
-logioptionsplus_agent      9004 C:\Program Files\LogiOptionsPlus\logioptionsplus_agent.exe    
-logioptionsplus_appbroker 12772 C:\Program Files\LogiOptionsPlus\logioptionsplus_appbroker.exe
-logioptionsplus_updater    4388 C:\Program Files\LogiOptionsPlus\logioptionsplus_updater.exe
+logioptionsplus_agent      6068 C:\Program Files\LogiOptionsPlus\logioptionsplus_agent.exe    
+logioptionsplus_appbroker 12860 C:\Program Files\LogiOptionsPlus\logioptionsplus_appbroker.exe
+logioptionsplus_updater    4424 C:\Program Files\LogiOptionsPlus\logioptionsplus_updater.exe
 
