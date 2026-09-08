@@ -53,17 +53,26 @@ void run() {
     check(g25_decode_input(bad.data(), 12, &st) == -1, "report id 1 rejected");
     check(g25_decode_input(nullptr, 12, &st) == -1, "null report rejected");
 
-    // FFB translate - Phase 1 passthrough.
+    // FFB - passthrough (mode 0).
     std::array<std::uint8_t, 8> ffb{};
     const std::array<std::uint8_t, 7> stop_all_cmd{0xf3, 0, 0, 0, 0, 0, 0};
-    check(g25_ffb_translate(stop_all_cmd.data(), 7, ffb.data(), 1) == 1, "translate stop-all");
-    check(ffb[0] == 0 && ffb[1] == 0xf3, "stop-all passes through");
+    check(g25_ffb_translate(0, stop_all_cmd.data(), 7, ffb.data(), 1) == 1, "passthrough stop-all");
+    check(ffb[0] == 0 && ffb[1] == 0xf3, "stop-all unchanged");
     // Leading report-id byte tolerated.
-    const std::array<std::uint8_t, 8> with_id{0x00, 0x11, 0x08, 0x1b, 0x80, 0, 0, 0};
-    check(g25_ffb_translate(with_id.data(), 8, ffb.data(), 1) == 1, "translate constant force");
-    check(ffb[1] == 0x11 && ffb[2] == 0x08 && ffb[3] == 0x1b, "constant force payload preserved");
-    check(g25_ffb_translate(nullptr, 8, ffb.data(), 1) == -1, "null in rejected");
-    check(g25_ffb_translate(with_id.data(), 8, ffb.data(), 0) == -1, "zero capacity rejected");
+    const std::array<std::uint8_t, 8> cf{0x00, 0x11, 0x08, 0x1b, 0x80, 0, 0, 0};
+    check(g25_ffb_translate(0, cf.data(), 8, ffb.data(), 1) == 1, "passthrough constant force");
+    check(ffb[1] == 0x11 && ffb[2] == 0x08 && ffb[3] == 0x1b, "passthrough keeps bytes");
+    check(g25_ffb_translate(0, nullptr, 8, ffb.data(), 1) == -1, "null in rejected");
+    check(g25_ffb_translate(0, cf.data(), 8, ffb.data(), 0) == -1, "zero capacity rejected");
+
+    // FFB - translate (mode 1).
+    check(g25_ffb_translate(1, cf.data(), 8, ffb.data(), 1) == 1, "translate constant force");
+    check((ffb == std::array<std::uint8_t, 8>{0, 0x11, 0x00, 0x1b, 0, 0, 0, 0}), "constant force type 0x08 -> 0x00, level kept");
+    const std::array<std::uint8_t, 7> cond{0x21, 0x0c, 0x0c, 0x00, 0x0c, 0x00, 0x01};
+    check(g25_ffb_translate(1, cond.data(), 7, ffb.data(), 1) == 1, "translate condition");
+    check(ffb[1] == 0x41 && ffb[2] == 0x0c && ffb[3] == 0x0c && ffb[5] == 0x0c, "condition slot2 -> G25 damper slot3");
+    check(g25_ffb_translate(1, stop_all_cmd.data(), 7, ffb.data(), 1) == 1, "translate stop-all");
+    check(ffb[1] == 0xf3, "stop-all still passes through in translate mode");
 
     check(std::strlen(g25_libg25_version()) > 0, "version string");
 }

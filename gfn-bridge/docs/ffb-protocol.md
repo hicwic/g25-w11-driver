@@ -1,64 +1,79 @@
-# Force feedback: current state and the translation work
+# Force feedback: GeForce NOW -> G25 translation
 
-## What happens today - and it works
+## What GeForce NOW sends to a virtual G29
 
-`G25ForceFeedbackRelay` (`src/G25GfnWheelBridge/G25ForceFeedbackRelay.cs`) is a
-near-raw passthrough:
+Captured with `--trace-output`, `logitech-g29-usbip` profile, **no G HUB**
+(so this is GFN + the game only). 1755 output reports over one Wreckfest
+session (`tools/ghub-uninstall/bridge-trace-no-ghub-working.txt`):
 
-1. The virtual G29 raises `OutputReceived` for each host output report.
-2. The first 7 bytes are copied into an 8-byte G25 output report (leading `0x00`
-   report id) and written to the physical G25 HID output endpoint.
-3. On shutdown the relay sends `F3` (stop all forces) and `F5` (disable
-   autocenter).
+| First 2 bytes | Count | Payload shape | Reading |
+| --- | --- | --- | --- |
+| `11 08` | 1577 | `11 08 XX 80 00 00 00` | **Constant force.** `0x11` = slot 1, download-and-play. `XX` = level, 0x1B..0xE5 (centre 0x80, so roughly +/-100). `0x80` in byte 3 = fixed. |
+| `21 0C` | 29 | `21 0C 0N 00 0N 00 01` | **Condition effect** on slot 2. `0N` symmetric, 0x07..0x0C. Trailing `0x01`. |
+| `23 0C` | 2 | `23 0C 0C 00 0C 00 01` | slot 2 stop + condition params (effect swap?). |
+| `FE 0D` | 65 | all zero | GFN wheel keepalive / RPM-LED refresh. |
+| `14 00` | 60 | all zero | slot 1, opcode 4 - "refresh" / default. |
+| `13 00` | 16 | all zero | slot 1, opcode 3 = **stop slot 1**. |
+| `F5 00` | 5 | all zero | all slots, opcode 5 = default spring / autocentre. |
+| `F3 00` | 1 | all zero | all slots, opcode 3 = **stop all forces**. |
 
-Confirmed 2026-09-08 in Wreckfest over GeForce NOW: the forces come through and
-feel correct. So the passthrough is good enough to play with. It is still not a
-protocol-accurate translation.
+The `F3` / `F5` bytes are exactly what `g25::stop_all()` / `disable_autocenter()`
+produce, so those pass through unchanged. `13` (stop slot 1) is also valid G25.
 
-## Observed output reports
+## What the G25 expects (`src/protocol/force_feedback.cpp`)
 
-With `--trace-output`, `logitech-g29-usbip` profile:
+- Constant force: `{0x11, 0x00, level, 0, 0, 0, 0}` - byte 1 is `0x00`;
+  `level = (force + 32768) >> 8` (0x80 = centre).
+- Spring: `{0x21, 0x0b, d1>>3, d2>>3, (coeff4(k2)<<4)|coeff4(k1),
+  ((d2&7)<<5)|((d1&7)<<1)|signs, clip>>8}` on slot 2.
+- Damper: `{0x41, 0x0c, coeff4(kl), kl<0, coeff4(kr), kr<0, clip>>8}` on slot 3.
+- Stop slot n: `{(1u << (n+4)) | 0x03, 0, ...}` (slot 0 = 0x13, slot 1 = 0x23...).
 
-| Bytes | Source | Meaning |
-| --- | --- | --- |
-| `13 00..`, `F3 00..`, `FE 0D ..` / `14 00..` | **G HUB** `logi_joy_hid` filter | device bring-up / keepalive. **Gone once G HUB is uninstalled** - not needed. |
-| `11 08 XX 80 00..` | **game** | constant force, `XX` = magnitude (198 distinct values in a no-G HUB drive test) |
-| `21 0C 0X 00 0X 00 01 ..` | **game** | condition effect (spring / damper), slot index `0X` |
+## Why passthrough already "feels right"
 
-The `1108`/`210C` reports are the real road/collision forces and are all that
-flows with G HUB removed. `1108 XX 80` reads as: command `0x11` (slot 1, play),
-effect type `0x08`, level `XX`, offset `0x80`.
+GFN's format is Logitech-classic-shaped: same slot bytes (`0x11` / `0x21`),
+same `F3` / `F5`. Constant force dominates (90% of reports) and the G25 clearly
+reacts to `11 08 XX 80` as sent. The likely errors are subtle:
 
-## Why passthrough is still not enough
+1. **Constant force type byte.** GFN sends `0x08` where the G25 driver uses
+   `0x00`. If `0x08` selects a different level scaling on the G25 the magnitude
+   is slightly off; if the G25 ignores unknown types some forces are dropped.
+   Hypothesis: `11 08 XX 80` -> `11 00 XX 00 00 00 00` (keep the level byte).
+2. **Condition effects.** `21 0C` on slot 2 with symmetric small coefficients
+   and no deadband reads as a **damper**, but the G25's damper is `0x41 0x0c`
+   on slot 3. Passthrough leaves it as `21 0C` (slot 2, wrong type) - probably
+   why centring / understeer feel is off. Hypothesis: decode `0N` as a
+   coefficient (`k ~= 0N << 11`) and emit `g25::damper(k, k, clip)`.
+3. **Direction / sign.** Not verified either way.
 
-- The G29 in native mode uses an **extended** command set; the G25/G27 use the
-  older **classic** set. `F3` / `F5` overlap, but constant-force level encoding,
-  spring/damper coefficients, autocenter and range commands differ between
-  generations. The passthrough happens to land close enough for constant force
-  to feel right; conditions and directions are not verified.
-- No effect-slot bookkeeping, magnitude scaling, clamping or rate limiting.
-- `XX` around `0x80`: is `0x80` really centre for the G25's classic constant
-  force, or is the G25 expecting a signed 8-bit level? Needs checking against
-  `lg4ff`.
+## The translation (`g25_ffb_translate`, mode 1)
 
-## Plan
+`libg25` gains a translating path, off by default (`bridge --ffb-translate`):
 
-1. **Capture a known force.** In a streamed session run a wheel FFB test
-   (constant force left/right, then a spring) and capture the exact reports with
-   `--trace-output`. Drive the physical G25 with the g25-driver DirectInput path
-   for the same effects and diff.
-2. **Build a real translation table** mapping virtual-G29 reports (`11xx`,
-   `21xx`, `Fx`) to G25 classic commands: constant force, spring, damper,
-   autocenter, stop.
-3. **Reference:** `drivers/hid/hid-lg4ff.c` (Linux kernel) - per-model command
-   differences (Driving Force, DFP, DFGT, G25, G27, G29). The g25-driver
-   `docs/protocol.md` and `g25ff.dll` encoders cover the G25 side.
-4. **Share the encoder.** The G25 command encoding should come from the shared
-   protocol library in `docs/plugin-integration.md`, not be re-implemented here.
+| GFN | -> G25 |
+| --- | --- |
+| `11 08 XX ..` | `constant_force`-shaped: `11 00 XX 00 00 00 00` |
+| `21 0C 0N 00 0N 00 ..` | `damper(N<<11, N<<11, 0xFFFF)` -> `41 0C ...` |
+| `23 0C ..` | `stop_force_slot(2)` -> `43 00 ...` |
+| `13`, `14`, `FE 0D` | passthrough (init / keepalive) |
+| `F3`, `F5` | passthrough (identical) |
 
-## Open questions
+These mappings are **hypotheses**. They need the A/B test below before becoming
+the default.
 
-- The game reports are classic-format and G HUB is not involved, so it is
-  HIDMaestro's G29 profile / DirectInput that presents a classic FFB interface.
-- Is `0x80` the correct centre for the G25 classic constant-force level?
-- Condition-effect (`21 0C ..`) fidelity - untested beyond "feels right".
+## A/B capture plan (hardware)
+
+1. **GFN side.** In a streamed game with a deterministic FFB effect (a
+   wheel-alignment screen; or force a constant pull by steering into a wall),
+   capture `bridge --trace-output` output.
+2. **Local reference.** For the same DirectInput effect, drive the real G25
+   through `g25ff.dll` (any local FFB game or `g25tool directinput-test
+   constant` / `spring` / `damper`) and capture its HID output
+   (`g25tool monitor --raw` on the output endpoint, or add a trace to
+   `output_session`).
+3. **Diff** the two byte streams for constant / spring / damper.
+4. Tune `g25_ffb_translate`, then feel-test: bridge-driven G25 vs
+   `g25ff`-driven G25 for the same effect should feel the same.
+
+Reference: `drivers/hid/hid-lg4ff.c` `lg4ff_update_slot` (per-model classic
+command format).

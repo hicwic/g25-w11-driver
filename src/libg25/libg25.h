@@ -57,15 +57,14 @@ LIBG25_API int32_t g25_cmd_set_range(int32_t degrees, uint8_t *out8);
 
 /* Translate one force-feedback output report that the virtual G29 received into
  * zero or more 8-byte G25 output reports.
+ *   mode   : 0 = passthrough (first 7 payload bytes -> one report, unchanged);
+ *            1 = translate GeForce NOW's G29 reports to G25 classic commands
+ *                (constant force, condition effects) - see docs/ffb-protocol.md.
  *   in / in_len : the raw report from the virtual G29 (a leading report-id byte
  *                 is tolerated).
- *   out         : buffer of out_cap * 8 bytes.
- * Returns the number of 8-byte reports written (0..out_cap), or -1 on error.
- *
- * Phase 1: this is the passthrough the bridge already ships (first 7 payload
- * bytes -> one G25 report). Protocol-accurate translation using the encoders in
- * src/protocol/force_feedback.h is future work (see docs/ffb-protocol.md). */
-LIBG25_API int32_t g25_ffb_translate(const uint8_t *in, int32_t in_len,
+ *   out    : buffer of out_cap * 8 bytes.
+ * Returns the number of 8-byte reports written (0..out_cap), or -1 on error. */
+LIBG25_API int32_t g25_ffb_translate(int32_t mode, const uint8_t *in, int32_t in_len,
                                      uint8_t *out, int32_t out_cap);
 
 /* Semver of this DLL's contract. */

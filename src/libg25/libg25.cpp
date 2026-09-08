@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "libg25/libg25.h"
 
+#include "protocol/force_feedback.h"
 #include "protocol/logitech_protocol.h"
 
 #include <algorithm>
@@ -65,7 +66,38 @@ int32_t g25_cmd_set_range(int32_t degrees, uint8_t *out8) {
     }
 }
 
-int32_t g25_ffb_translate(const uint8_t *in, int32_t in_len, uint8_t *out, int32_t out_cap) {
+namespace {
+g25::Command passthrough(std::span<const std::uint8_t> payload) {
+    g25::Command command{};
+    const auto n = std::min<std::size_t>(payload.size(), command.size());
+    for (std::size_t i = 0; i < n; ++i) command[i] = payload[i];
+    return command;
+}
+
+// GeForce NOW's G29 report -> G25 classic command. Hypotheses; see
+// docs/ffb-protocol.md. Falls back to passthrough for anything not recognised
+// (init, keepalive, F3/F5 which are already identical).
+g25::Command translate(std::span<const std::uint8_t> p) {
+    const auto b0 = p[0];
+    const auto b1 = p.size() > 1 ? p[1] : std::uint8_t{0};
+
+    if (b0 == 0x11 && b1 == 0x08 && p.size() >= 3) {
+        // Constant force, slot 1: keep the level byte, use the G25 type 0x00.
+        return {0x11, 0x00, p[2], 0, 0, 0, 0};
+    }
+    if (b0 == 0x21 && b1 == 0x0C && p.size() >= 6) {
+        // Condition on slot 2 (symmetric, no deadband) -> G25 damper (slot 3).
+        // Layout matches g25::damper: {0x41,0x0c, coeff_l, sign_l, coeff_r, sign_r, clip>>8}.
+        return {0x41, 0x0C, p[2], 0, p[4], 0, 0xFF};
+    }
+    if (b0 == 0x23 && b1 == 0x0C) {
+        return g25::stop_force_slot(2);
+    }
+    return passthrough(p);
+}
+}
+
+int32_t g25_ffb_translate(int32_t mode, const uint8_t *in, int32_t in_len, uint8_t *out, int32_t out_cap) {
     if (in == nullptr || out == nullptr || in_len < 1 || out_cap < 1) return -1;
 
     // Tolerate a leading report-id byte: the HIDMaestro USB/IP backend sometimes
@@ -74,12 +106,7 @@ int32_t g25_ffb_translate(const uint8_t *in, int32_t in_len, uint8_t *out, int32
     if (payload.size() >= 8 && payload[0] == 0x00) payload = payload.subspan(1);
     if (payload.empty()) return -1;
 
-    // Phase 1: passthrough. First 7 bytes -> one 8-byte G25 report
-    // (0x00 report id + up to 7 command bytes), matching what the bridge ships.
-    g25::Command command{};
-    const auto n = std::min<std::size_t>(payload.size(), command.size());
-    for (std::size_t i = 0; i < n; ++i) command[i] = payload[i];
-    write_output(out, command);
+    write_output(out, mode == 1 ? translate(payload) : passthrough(payload));
     return 1;
 }
 
