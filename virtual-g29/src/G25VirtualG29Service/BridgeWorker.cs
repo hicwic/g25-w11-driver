@@ -36,7 +36,6 @@ sealed partial class BridgeWorker(
             return;
         }
 
-        var cfg = Config.Load();
         var stopEventName = $@"Local\g25vg29-stop-{Environment.ProcessId}";
         using var stopEvent = new EventWaitHandle(false, EventResetMode.ManualReset, stopEventName);
 
@@ -47,7 +46,10 @@ sealed partial class BridgeWorker(
             _wheelGone = false;
             status.Update(s => { s.State = failures == 0 ? "starting" : "restarting"; s.LastError = null; });
 
-            var args = string.Join(' ', BuildArgs(cfg, stopEventName));
+            // Re-read on every (re)start so a config / tray change is picked up.
+            var cfg = Config.Load();
+            var wheelRange = TrayRotationDegrees() ?? cfg.WheelRangeDegrees;
+            var args = string.Join(' ', BuildArgs(cfg, wheelRange, stopEventName));
             log.LogInformation("starting bridge: {Args}", args);
 
             using var proc = new Process
@@ -131,13 +133,13 @@ sealed partial class BridgeWorker(
         }
     }
 
-    private static IEnumerable<string> BuildArgs(Config cfg, string stopEventName)
+    private static IEnumerable<string> BuildArgs(Config cfg, int wheelRange, string stopEventName)
     {
         yield return "bridge";
         yield return "--profile";
         yield return cfg.Profile;
         yield return "--wheel-range";
-        yield return cfg.WheelRangeDegrees.ToString(CultureInfo.InvariantCulture);
+        yield return wheelRange.ToString(CultureInfo.InvariantCulture);
         yield return "--stop-event";
         yield return stopEventName;
         if (cfg.InstallDriver) yield return "--install-driver";
@@ -148,6 +150,38 @@ sealed partial class BridgeWorker(
         if (!cfg.HideLocalG25) yield return "--no-hide-g25";
         if (!cfg.ForwardButtons) yield return "--no-buttons";
         if (!cfg.ForwardHat) yield return "--no-hat";
+    }
+
+    // The tray writes the user's chosen wheel range to HKCU\Software\g25-driver
+    // \Rotation. The service runs as SYSTEM, so read it from HKEY_USERS. Returns
+    // null when no interactive user has set it (fall back to config / 900).
+    private int? TrayRotationDegrees()
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        try
+        {
+            using var users = Microsoft.Win32.RegistryKey.OpenBaseKey(
+                Microsoft.Win32.RegistryHive.Users, Microsoft.Win32.RegistryView.Default);
+            foreach (var sid in users.GetSubKeyNames())
+            {
+                if (sid.StartsWith(".DEFAULT", StringComparison.OrdinalIgnoreCase) ||
+                    sid.EndsWith("_Classes", StringComparison.OrdinalIgnoreCase) ||
+                    sid is "S-1-5-18" or "S-1-5-19" or "S-1-5-20")
+                    continue;
+                try
+                {
+                    using var key = users.OpenSubKey($@"{sid}\Software\g25-driver");
+                    if (key?.GetValue("Rotation") is int r && r is 180 or 360 or 540 or 900)
+                    {
+                        log.LogInformation("using tray wheel range {Deg} deg", r);
+                        return r;
+                    }
+                }
+                catch { /* not this hive */ }
+            }
+        }
+        catch (Exception ex) { log.LogDebug(ex, "could not read tray rotation"); }
+        return null;
     }
 
     // If the worker was killed rather than exiting cleanly, its HidHide cloak

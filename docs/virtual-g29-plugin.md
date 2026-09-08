@@ -1,12 +1,12 @@
 # Virtual G29 bridge - packaging plan
 
-Status: **all phases done and validated** (2026-09-08). Branch
-`feature/geforce-now-wheel-support`. Installed end to end from the real
-`g25-virtual-g29-<ver>-setup.exe` (Dev Build artifact): HIDMaestro driver +
-`g25vg29` service + tray toggle + steering & FFB in GeForce NOW.
+Status: **all phases done and validated** (2026-09-08). Merged to `main`,
+released `v0.2.0`. HIDMaestro driver + `g25vg29` service + tray toggle +
+steering & FFB confirmed over GeForce NOW (Wreckfest, BeamNG) and in local
+games (Wreckfest, Forza Horizon 4).
 
-Left: archive the old standalone repo, open a PR to `main`, cut a `v*` release,
-and the on-hardware FFB A/B test (`--ffb-translate`).
+Left: archive the old standalone repo, and the FFB translation-fidelity work
+(`--ffb-translate` A/B, conditions beyond constant force).
 
 Background on *why* a bridge is needed: [geforce-now.md](geforce-now.md). How the
 GFN client actually works: [gfn-client-internals.md](gfn-client-internals.md).
@@ -156,6 +156,33 @@ from every process except a whitelist. `pnputil /disable-device` cannot be used
 
 Uninstalling the bridge does **not** remove HidHide (other tools may use it); it
 only reverts the cloak.
+
+### Phase 8 - force feedback in local games (done)
+The virtual G29 is a DirectInput FFB device, but Windows needs a per-device
+*effect driver* to turn a game's `CreateEffect` calls into wheel commands - the
+core driver registered `g25ff.dll` as that driver for `046D:C299` only. The
+GeForce NOW client sidesteps this (it writes raw G29 HID reports itself); a
+local game does not, so it produced **no** FFB output on the virtual G29.
+
+- **`g25ff.dll` virtual-G29 output.** `DeviceID()` recognises a `pid_c24f`
+  interface path and drives *that* device's HID output (`G29Output`, a 17-byte
+  vendor report) instead of the hidden G25. The command bytes are unchanged -
+  `force_feedback.cpp` is already lg4ff, one format for G25/G27/G29 - so the
+  bridge's `OutputReceived` -> `G25ForceFeedbackRelay` (passthrough) carries
+  them to the G25, exactly the GeForce NOW route. No game executable is
+  whitelisted; the G25 stays hidden.
+- **`virtual-g29/scripts/Register-G29FF.ps1`** - per-user (HKCU) OEM +
+  `OEMForceFeedback` metadata for `046D:C24F`: `OEMName` =
+  `Logitech G29 Driving Force Racing Wheel USB`, `OEMData` =
+  `43 00 08 10 19 00 00 00` (byte 4 `0x19` = 25 buttons), `OEMForceFeedback\
+  CLSID` -> the g25ff class, 12 effect GUIDs. Rebuilds the key clean (a local
+  game may have written a broken `03...` / no-"Logitech" entry - this is why
+  Forza Horizon 4 rejected the wheel). Backs up / restores. No-op if the core
+  driver's g25ff class is not registered.
+- **Installer** runs the script as the original user (`runasoriginaluser`) on
+  install and uninstall.
+- **Dependency:** local FFB needs the **core g25-driver** installed (for the
+  g25ff COM class). GeForce NOW does not.
 
 ### Phase 5 - installers (done, ISCC / real install still to run)
 - Core installer unchanged (`installer/g25-w11-driver.iss`, per-user).

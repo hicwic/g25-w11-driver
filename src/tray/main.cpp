@@ -172,6 +172,14 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             pending_path = applied_path;
             (void)write_user_settings(settings);
             apply_or_retry(window);
+            // The bridge reads this setting at (re)start; bounce it so G29 mode
+            // picks up the new range too.
+            const auto vs = vg29::status();
+            if (vs.run == vg29::RunState::running || vs.run == vg29::RunState::starting) {
+                vg29::stop();
+                vg29::start();
+                SetTimer(window, timer_id, 2000, nullptr);
+            }
         } else if (command == cmd_vg29_toggle) {
             const auto st = vg29::status();
             if (st.run == vg29::RunState::running || st.run == vg29::RunState::starting)

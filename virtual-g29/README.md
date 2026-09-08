@@ -6,38 +6,50 @@ wheel (GeForce NOW today) sees one. Ships as an **optional, opt-in** component
 (it needs the HIDMaestro virtual HID driver and Administrator once); the core
 driver stays pure per-user.
 
-Why a bridge: the core driver fixes **local** games via a per-user DirectInput
-effect driver. GeForce NOW is different - the streaming client filters local
-devices by a wheel VID/PID allowlist before the remote game sees input, and the
-G25 (`046D:C299`) is not on it. So a virtual supported wheel is needed.
-Background and evidence: [../docs/geforce-now.md](../docs/geforce-now.md).
+Why a bridge: **GeForce NOW** filters local devices by a hard-coded wheel
+VID/PID allowlist before the remote game sees input, and the G25 (`046D:C299`)
+is not on it - so a virtual supported wheel is needed. Some **local** titles
+also gate features by wheel model (Forza Horizon 4 only accepts a known wheel;
+some sims tune FFB per model). Background: [../docs/geforce-now.md](../docs/geforce-now.md).
 Packaging plan: [../docs/virtual-g29-plugin.md](../docs/virtual-g29-plugin.md).
 
-> **Status: working prototype.** Steering and force feedback both confirmed in
-> Wreckfest over GeForce NOW (2026-09-08), **with Logitech G HUB uninstalled -
-> it is not required.** Needs the `logitech-g29-usbip` profile (now the
-> default), the HIDMaestro driver, exactly one virtual G29, and the G25 in
-> native mode. FFB is still a raw passthrough (feels right, not
-> protocol-accurate). See `CHANGELOG.md` and `docs/`.
+> **Status: working.** Steering + force feedback confirmed over GeForce NOW
+> (Wreckfest, BeamNG) and in **local** games (Wreckfest, Forza Horizon 4), with
+> Logitech G HUB uninstalled. Needs the `logitech-g29-usbip` profile (default),
+> the HIDMaestro driver, exactly one virtual G29, the G25 in native mode, and -
+> for local FFB - the core g25-driver installed. FFB translation for conditions
+> beyond constant force is not yet protocol-accurate (`docs/ffb-protocol.md`).
 
 ## How it works
 
 ```
-Physical G25 (046D:C299)                     Virtual G29 (046D:C24F)
+Physical G25 (046D:C299)                          Virtual G29 (046D:C24F)
    HID input  ──► G25Source ──► bridge ──► HIDMaestro ──► GeForce NOW client
-   HID output ◄── G25ForceFeedbackRelay ◄── OutputReceived ◄──┘
+                                                     └──► local game (DirectInput)
+   HID output ◄── G25ForceFeedbackRelay ◄── OutputReceived ◄──┘  (both sources)
 ```
 
 - `G25Source` reads the native G25 HID input report directly (wheel, 3 pedals,
   buttons, hat).
 - HIDMaestro creates the virtual G29 from a profile (`logitech-g29-usbip` by
   default - the USB/IP backend that GeForce NOW recognises).
-- `G25ForceFeedbackRelay` forwards output reports from the virtual G29 back to
-  the G25. Raw passthrough - it works (real forces come through), but is not a
-  protocol-accurate translation (`docs/ffb-protocol.md`). At startup it also
-  sends `F3` / `F5` / SET_RANGE to the G25 (the bring-up G HUB used to do).
+- **FFB in** comes from either the GeForce NOW client (raw G29 HID reports) or,
+  for a local game, `g25ff.dll` (the core driver's DirectInput effect driver):
+  when a game creates effects on the virtual G29, `g25ff` writes lg4ff reports
+  to it. Both land on `OutputReceived`.
+- `G25ForceFeedbackRelay` forwards those to the physical G25. At startup it also
+  sends `F3` / `F5` / SET_RANGE (the bring-up G HUB used to do); the range is
+  the tray's "Maximum rotation" setting.
 
-GeForce NOW talks to the virtual G29 through **DirectInput**; it has no
+The G25 stays hidden from local games (HidHide), so they bind the virtual G29
+and its FFB flows back through the relay - no whitelisting of game executables.
+
+Local FFB needs the core g25-driver installed. The vg29 installer registers the
+per-user OEM / force-feedback metadata for `046D:C24F` (`Register-G29FF.ps1`,
+`OEMName` = `Logitech G29 Driving Force Racing Wheel USB`, `OEMData` =
+`43 00 08 10 19 00 00 00`) pointing `OEMForceFeedback` at the g25ff class.
+
+GeForce NOW and local games talk to the virtual G29 through **DirectInput**; no
 dependency on Logitech G HUB (confirmed with G HUB fully uninstalled).
 
 ## Performance (measured)
@@ -143,6 +155,15 @@ the wheel and not calibration.
 The bridge holds the virtual G29 for ~15 s in case it is a USB glitch
 (tray shows `G29 mode - G25 disconnected`), then stops the service and removes
 the virtual wheel. Re-plug the G25 and toggle G29 mode back on.
+
+### A local game sees the virtual G29 but there is no force feedback
+
+Local FFB routes through `g25ff.dll` from the **core g25-driver** - install it
+first. Then check the per-user registration:
+`HKCU\...\Joystick\OEM\VID_046D&PID_C24F\OEMForceFeedback\CLSID` should be
+`{D7A3D8CB-8B3C-4C35-A552-73A4BEB529E0}`. If a game overwrote the OEM entry
+(`OEMName` back to `G29 Driving Force Racing Wheel`, `OEMData` starting `03`),
+re-run `scripts\Register-G29FF.ps1 -Action Install` and restart the game.
 
 ### If the wheel is detected in-game but does nothing
 

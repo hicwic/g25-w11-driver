@@ -10,12 +10,20 @@ The project provides:
   x64 and x86 games.
 - `g25tray.exe`, a notification-area helper that switches the wheel to native
   G25 mode and applies the preferred steering range.
+- An **optional** [Virtual G29 bridge](virtual-g29/README.md) that presents the
+  G25 as a virtual Logitech G29 for software that only accepts a supported wheel
+  from a hard-coded list - GeForce NOW filters the G25 out before the remote
+  game sees it, and some local titles gate features by wheel model.
 - A per-user Windows installer and GitHub Actions release pipeline.
 
 No custom kernel driver, LGS, WinUSB/Zadig setup, Secure Boot change, Memory
 Integrity/HVCI change or driver-signing bypass is required by this prototype.
 The DirectInput integration adds COM/OEM registry keys under the current user;
 the installer backs them up and restores/removes them on uninstall.
+
+The Virtual G29 bridge is a separate opt-in component (it adds a virtual HID
+driver and a Windows service); the core driver above stays pure per-user. See
+[virtual-g29/README.md](virtual-g29/README.md).
 
 ## AI Assistance Notice
 

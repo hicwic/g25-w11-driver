@@ -12,11 +12,13 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cwctype>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <new>
 #include <optional>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -53,12 +55,73 @@ struct Effect {
     Clock::time_point started{};
 };
 
+// Writes lg4ff force-feedback reports to the virtual G29 (046D:C24F) HID
+// output. The bridge's OutputReceived relays them to the physical G25, so a
+// local game gets FFB even while HidHide hides the G25 from the game process.
+// The command bytes are identical to the G25 path - lg4ff is one format for
+// G25/G27/G29 - only the destination differs.
+class G29Output {
+public:
+    explicit G29Output(const std::wstring& interface_path)
+        : handle_(CreateFileW(interface_path.c_str(), GENERIC_WRITE,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                              OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr)) {
+        if (!handle_.valid())
+            throw std::runtime_error(windows_error("CreateFile(virtual G29)", GetLastError()));
+        PHIDP_PREPARSED_DATA preparsed{};
+        if (!HidD_GetPreparsedData(handle_.get(), &preparsed))
+            throw std::runtime_error("HidD_GetPreparsedData(virtual G29) failed");
+        HIDP_CAPS caps{};
+        const auto status = HidP_GetCaps(preparsed, &caps);
+        HidD_FreePreparsedData(preparsed);
+        if (status != HIDP_STATUS_SUCCESS || caps.OutputReportByteLength < 8)
+            throw std::runtime_error("virtual G29 has no usable HID output report");
+        report_.assign(caps.OutputReportByteLength, std::uint8_t{0});
+    }
+
+    void send(const Command& command) {
+        std::fill(report_.begin(), report_.end(), std::uint8_t{0});
+        std::copy(command.begin(), command.end(), report_.begin() + 1);  // [0] = report id 0
+        UniqueHandle event(CreateEventW(nullptr, TRUE, FALSE, nullptr));
+        if (!event.valid())
+            throw std::runtime_error(windows_error("CreateEvent(G29 write)", GetLastError()));
+        OVERLAPPED operation{}; operation.hEvent = event.get();
+        DWORD transferred{};
+        if (WriteFile(handle_.get(), report_.data(), static_cast<DWORD>(report_.size()),
+                      &transferred, &operation))
+            return;
+        const auto error = GetLastError();
+        if (error != ERROR_IO_PENDING)
+            throw std::runtime_error(windows_error("WriteFile(virtual G29)", error));
+        if (WaitForSingleObject(event.get(), 250) != WAIT_OBJECT_0) {
+            CancelIoEx(handle_.get(), &operation);
+            throw std::runtime_error("virtual G29 HID write timed out");
+        }
+        if (!GetOverlappedResult(handle_.get(), &operation, &transferred, FALSE))
+            throw std::runtime_error(windows_error("GetOverlappedResult(virtual G29)", GetLastError()));
+    }
+
+private:
+    UniqueHandle handle_;
+    std::vector<std::uint8_t> report_;
+};
+
 struct Hardware {
     DeviceInfo info;
+    std::wstring g29_path;                  // non-empty => drive the virtual G29
     std::unique_ptr<WriterLock> writer_lock;
     std::unique_ptr<HidTransport> transport;
     std::unique_ptr<OutputSession> output;
+    std::unique_ptr<G29Output> g29;
 };
+
+bool is_virtual_g29_path(const wchar_t* path) {
+    if (!path) return false;
+    std::wstring lower(path);
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
+    return lower.find(L"vid_046d&pid_c24f") != std::wstring::npos;
+}
 
 std::optional<Kind> effect_kind(DWORD id) {
     if (id == constant_effect_id) return Kind::constant;
@@ -123,14 +186,20 @@ public:
             return E_INVALIDARG;
         shutdown();
         try {
-            const auto devices = enumerate_wheels();
-            const auto found = std::find_if(devices.begin(), devices.end(), [&](const DeviceInfo& info) {
-                return same_path(info.path, init->pwszDeviceInterface);
-            });
-            if (found == devices.end()) return DIERR_DEVICENOTREG;
-            require_g25_writer(*found, false);
             auto hardware = std::make_unique<Hardware>();
-            hardware->info = *found;
+            if (is_virtual_g29_path(init->pwszDeviceInterface)) {
+                // Local game asking for FFB on our virtual G29. Drive its HID
+                // output; the bridge relays to the physical G25.
+                hardware->g29_path = init->pwszDeviceInterface;
+            } else {
+                const auto devices = enumerate_wheels();
+                const auto found = std::find_if(devices.begin(), devices.end(), [&](const DeviceInfo& info) {
+                    return same_path(info.path, init->pwszDeviceInterface);
+                });
+                if (found == devices.end()) return DIERR_DEVICENOTREG;
+                require_g25_writer(*found, false);
+                hardware->info = *found;
+            }
             {
                 std::lock_guard lock(mutex_);
                 hardware_ = std::move(hardware);
@@ -336,18 +405,26 @@ private:
     bool valid_device(DWORD id) const { return hardware_ && id == active_external_id_; }
     bool activate_locked() {
         if (!hardware_ || hardware_failed_) return false;
-        if (hardware_->output) return true;
+        if (hardware_->output || hardware_->g29) return true;
         try {
-            hardware_->writer_lock = std::make_unique<WriterLock>();
-            hardware_->transport = std::make_unique<HidTransport>(hardware_->info, Access::write);
-            auto output = std::make_unique<OutputSession>(*hardware_->transport);
-            output->initialize();
-            hardware_->output = std::move(output);
+            if (!hardware_->g29_path.empty()) {
+                auto g29 = std::make_unique<G29Output>(hardware_->g29_path);
+                g29->send(stop_all());
+                g29->send(disable_autocenter());
+                hardware_->g29 = std::move(g29);
+            } else {
+                hardware_->writer_lock = std::make_unique<WriterLock>();
+                hardware_->transport = std::make_unique<HidTransport>(hardware_->info, Access::write);
+                auto output = std::make_unique<OutputSession>(*hardware_->transport);
+                output->initialize();
+                hardware_->output = std::move(output);
+            }
             last_.fill(std::nullopt);
             return true;
         } catch (...) {
             hardware_failed_ = true;
             hardware_->output.reset();
+            hardware_->g29.reset();
             hardware_->transport.reset();
             hardware_->writer_lock.reset();
             return false;
@@ -518,8 +595,12 @@ private:
                 if (desired[slot] && last_[slot])
                     command[0] = static_cast<std::uint8_t>((command[0] & 0xf0u) | 0x0cu);
                 auto* transport = hardware_ && hardware_->output ? hardware_->transport.get() : nullptr;
+                auto* g29 = hardware_ && hardware_->g29 ? hardware_->g29.get() : nullptr;
                 lock.unlock();
-                try { if (transport) transport->send(command); }
+                try {
+                    if (transport) transport->send(command);
+                    else if (g29) g29->send(command);
+                }
                 catch (...) { lock.lock(); hardware_failed_ = true; break; }
                 lock.lock();
                 last_[slot] = desired[slot];
@@ -543,6 +624,9 @@ private:
         }
         if (hardware && hardware->output) {
             try { hardware->output->finish(); } catch (...) {}
+        }
+        if (hardware && hardware->g29) {
+            try { hardware->g29->send(stop_all()); hardware->g29->send(disable_autocenter()); } catch (...) {}
         }
     }
 
