@@ -128,6 +128,22 @@ g25-virtual-g29.exe latency --seconds 20
 5. Launch GeForce NOW and a racing game. Test steering, then force feedback.
 6. `Cleanup-Admin.ps1` when done.
 
+### A pedal reads nothing, then jumps to full when floored (once per pedal)
+
+Expected on the first use after the wheel is (re)plugged. The **G25 firmware**
+auto-calibrates each pedal's travel and only knows the endpoints once the pedal
+has been to its mechanical stop; G HUB / Profiler used to pre-load this.
+**Press the accelerator, brake and clutch fully to the floor once** after
+enabling G29 mode and they track normally for the rest of the session.
+`g25-virtual-g29.exe dry-run` shows the raw axes if you want to confirm it is
+the wheel and not calibration.
+
+### The physical G25 was unplugged while G29 mode was on
+
+The bridge holds the virtual G29 for ~15 s in case it is a USB glitch
+(tray shows `G29 mode - G25 disconnected`), then stops the service and removes
+the virtual wheel. Re-plug the G25 and toggle G29 mode back on.
+
 ### If the wheel is detected in-game but does nothing
 
 Almost always a second, stale virtual G29. GeForce NOW's `geronimo.log` shows

@@ -22,8 +22,9 @@ sealed class G25Source : IDisposable
     private const int G25NativeProductId = 0xC299;
 
     // How long ReadLoop keeps trying to re-acquire the G25 after an I/O error
-    // (USB re-enumeration) before giving up.
-    private static readonly TimeSpan ReconnectWindow = TimeSpan.FromSeconds(30);
+    // before giving up. Startup USB re-enumeration is handled separately by
+    // Open(); a mid-run gap this long means the wheel was really unplugged.
+    private static readonly TimeSpan ReconnectWindow = TimeSpan.FromSeconds(15);
 
     private HidStream _stream;
     private readonly byte[] _report = new byte[12];
@@ -88,7 +89,8 @@ sealed class G25Source : IDisposable
     // does not come back on native 046D:C299 within ReconnectWindow.
     private bool Reconnect()
     {
-        Console.Error.WriteLine("Physical G25 read failed (USB re-enumeration?). Trying to reconnect...");
+        // Parsed by the service to tell "hidden by HidHide" from "unplugged".
+        Console.WriteLine("WHEEL: lost");
         var deadline = DateTime.UtcNow + ReconnectWindow;
         while (!_stopping && DateTime.UtcNow < deadline)
         {
@@ -97,11 +99,12 @@ sealed class G25Source : IDisposable
             {
                 try { _stream.Dispose(); } catch { }
                 _stream = stream;
-                Console.Error.WriteLine("Physical G25 reconnected.");
+                Console.WriteLine("WHEEL: reconnected");
                 return true;
             }
             Thread.Sleep(500);
         }
+        Console.WriteLine("WHEEL: gone");
         return false;
     }
 

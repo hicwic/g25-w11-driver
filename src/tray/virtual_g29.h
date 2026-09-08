@@ -14,7 +14,8 @@ Presence presence();
 struct Status {
     RunState run{RunState::stopped};
     bool ffb_active{false};
-    std::wstring detail;   // short line for the menu, e.g. "On" / "Off" / "Starting..."
+    bool wheel_lost{false};   // service running but the physical G25 stopped responding
+    std::wstring detail;      // short line for the menu, e.g. "On" / "Off" / "Starting..."
 };
 
 Status status();
