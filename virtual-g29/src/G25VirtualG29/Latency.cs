@@ -91,6 +91,7 @@ static class Latency
         // stab or a wheel flick), pooled across every channel that was used.
         var all = new List<double>();
         var usedChannels = new List<string>();
+        var totalDropped = 0;
         var busy = -1; var busyRange = 0.0;
         for (var ch = 0; ch < Channels.Length; ch++)
         {
@@ -100,7 +101,8 @@ static class Latency
             if (range < 0.15 * Channels[ch].fullScale) continue;   // channel not exercised
             if (range > busyRange) { busyRange = range; busy = ch; }
 
-            var e = CrossingLatenciesMs(s25, s29);
+            var (e, dropped) = CrossingLatenciesMs(s25, s29);
+            totalDropped += dropped;
             if (e.Count > 0) { all.AddRange(e); usedChannels.Add($"{Channels[ch].name}x{e.Count}"); }
         }
 
@@ -113,18 +115,19 @@ static class Latency
         if (all.Count >= 3)
         {
             all.Sort();
-            Console.WriteLine($"  per-edge  n={all.Count,3}  median {Pct(all, 50),5:0.1} ms   "
-                              + $"p10 {Pct(all, 10),4:0.1}   p90 {Pct(all, 90),5:0.1}   sigma {Sd(all),4:0.1} ms");
-            Console.WriteLine($"            from: {string.Join(", ", usedChannels)}");
+            Console.WriteLine($"  per-edge   n={all.Count,3}   median {Pct(all, 50),4:0.0} ms   "
+                              + $"p10 {Pct(all, 10),4:0.0}   p90 {Pct(all, 90),4:0.0} ms"
+                              + (totalDropped > 0 ? $"   ({totalDropped} unmatched)" : ""));
+            Console.WriteLine($"             from: {string.Join(", ", usedChannels)}");
         }
         else
         {
-            Console.WriteLine("  per-edge  : no clean step captured - stab a pedal fully to the floor a few times");
+            Console.WriteLine("  per-edge   : no clean step captured - stab a pedal fully to the floor a few times");
         }
         if (busy >= 0 && xc.Item2 >= 0.80)
-            Console.WriteLine($"  x-corr    {xc.Item1,5:0.1} ms   (on '{Channels[busy].name}', fit r={xc.Item2:0.00})");
+            Console.WriteLine($"  x-corr     {xc.Item1,4:0.0} ms   (on '{Channels[busy].name}', fit r={xc.Item2:0.00})");
         else
-            Console.WriteLine("  x-corr    inconclusive");
+            Console.WriteLine("  x-corr     inconclusive (needs a smooth wheel sweep)");
         Console.WriteLine();
         Console.WriteLine("Excludes the sensor->USB delay and anything past the virtual G29");
         Console.WriteLine("(game poll rate, or GeForce NOW sampling + network).");
@@ -140,8 +143,8 @@ static class Latency
         var iv = new List<double>(s.Count);
         for (var i = 1; i < s.Count; i++) iv.Add(s[i].t - s[i - 1].t);
         iv.Sort();
-        Console.WriteLine($"{label} : {rate,6:0} Hz   gap median {Pct(iv, 50),4:0.0}  p95 {Pct(iv, 95),4:0.0}  "
-                          + $"max {iv[^1],5:0.0} ms   (n={s.Count})");
+        Console.WriteLine($"{label} : {rate,6:0} Hz   gap min {iv[0],4:0.0}  median {Pct(iv, 50),4:0.0}  "
+                          + $"p95 {Pct(iv, 95),4:0.0}  max {iv[^1],5:0.0} ms   (n={s.Count})");
     }
 
     // --- edges: match midpoint crossings of a step input --------------------
@@ -178,27 +181,42 @@ static class Latency
     private static double Interp((double t, double v) a, (double t, double v) b, double y)
         => Math.Abs(b.v - a.v) < 1e-9 ? b.t : a.t + (y - a.v) / (b.v - a.v) * (b.t - a.t);
 
-    private static List<double> CrossingLatenciesMs(List<(double t, double v)> g25, List<(double t, double v)> g29)
+    // Returns (matched latencies ms, count of G25 edges with no confident match).
+    private static (List<double> lat, int dropped) CrossingLatenciesMs(
+        List<(double t, double v)> g25, List<(double t, double v)> g29)
     {
         var res = new List<double>();
+        var dropped = 0;
         var xa = Crossings(g25);
         var xb = Crossings(g29);
-        if (xa.Count == 0 || xb.Count == 0) return res;
+        if (xa.Count == 0 || xb.Count == 0) return (res, xa.Count);
 
+        const double lo = -3, hi = 30;   // a plausible pipeline window (ms)
         foreach (var (tc, dir) in xa)
         {
-            // nearest G29 crossing, same direction, within a plausible window
-            var best = double.NaN;
-            foreach (var (td, dd) in xb)
-            {
-                if (dd != dir) continue;
-                var dt = td - tc;
-                if (dt < -3 || dt > 80) continue;
-                if (double.IsNaN(best) || Math.Abs(dt) < Math.Abs(best)) best = dt;
-            }
-            if (!double.IsNaN(best)) res.Add(best);
+            // mutual nearest neighbour: the G25 edge's closest same-direction G29
+            // edge must also have this G25 edge as its closest. Kills mispairs
+            // when the user pumps fast and an edge is missed on one side.
+            int bj = Nearest(xb, tc, dir);
+            if (bj < 0) { dropped++; continue; }
+            var dt = xb[bj].t - tc;
+            if (dt < lo || dt > hi || Nearest(xa, xb[bj].t, dir) is var ba && ba >= 0 && xa[ba].t != tc)
+            { dropped++; continue; }
+            res.Add(dt);
         }
-        return res;
+        return (res, dropped);
+    }
+
+    private static int Nearest(List<(double t, int dir)> xs, double t, int dir)
+    {
+        var best = -1; var bestAbs = double.MaxValue;
+        for (var i = 0; i < xs.Count; i++)
+        {
+            if (xs[i].dir != dir) continue;
+            var d = Math.Abs(xs[i].t - t);
+            if (d < bestAbs) { bestAbs = d; best = i; }
+        }
+        return best;
     }
 
     // --- cross-correlation --------------------------------------------------
@@ -270,13 +288,6 @@ static class Latency
             nx += x[i - lag] * x[i - lag];
         }
         return ny > 0 && nx > 0 ? dot / Math.Sqrt(ny * nx) : 0;
-    }
-
-    private static double Sd(List<double> x)
-    {
-        if (x.Count < 2) return 0;
-        var m = x.Average();
-        return Math.Sqrt(x.Sum(v => (v - m) * (v - m)) / (x.Count - 1));
     }
 
     private static double Pct(List<double> data, double p)
