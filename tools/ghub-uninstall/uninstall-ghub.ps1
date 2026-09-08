@@ -53,14 +53,15 @@ if (Get-Service -Name 'LGHUBUpdaterService' -EA SilentlyContinue) {
 # 3b. autostart
 foreach ($rk in 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run','HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run') {
     Get-Item $rk -EA SilentlyContinue | ForEach-Object {
-        $_.Property | Where-Object { $_ -match 'LGHUB|logi' } | ForEach-Object {
+        $_.Property | Where-Object { $_ -match 'LGHUB|Logitech' } | ForEach-Object {
             Write-Host "    remove Run value $rk\$_"; Remove-ItemProperty -Path $rk -Name $_ -EA SilentlyContinue
         }
     }
 }
 
-# 3c. scheduled tasks
-Get-ScheduledTask | Where-Object { $_.TaskName -match 'LGHUB|logi' -or $_.TaskPath -match 'LGHUB|Logi' } | ForEach-Object {
+# 3c. scheduled tasks. Match Logitech only - do NOT use a bare 'logi' pattern,
+# it also matches Windows built-ins like \Microsoft\Windows\PushToInstall\LoginCheck.
+Get-ScheduledTask | Where-Object { $_.TaskName -match 'LGHUB|Logitech' -or $_.TaskPath -match '\\Logitech\\' } | ForEach-Object {
     Write-Host "    unregister task $($_.TaskPath)$($_.TaskName)"
     Unregister-ScheduledTask -TaskName $_.TaskName -TaskPath $_.TaskPath -Confirm:$false -EA SilentlyContinue
 }
