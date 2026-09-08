@@ -50,14 +50,14 @@ jobs:
         run: |
           .\scripts\Package-Release.ps1 -Version $env:G25_VERSION -Build64 dist\stage-x64\bin -Build32 dist\stage-x86\bin
           .\scripts\Generate-Changelog.ps1 -Version $env:G25_VERSION -OutputPath dist\CHANGELOG.md
-      - name: Publish GeForce NOW bridge payload
+      - name: Publish Virtual G29 payload
         shell: pwsh
         run: |
           $libg25 = (Resolve-Path "dist\stage-x64\bin\libg25.dll").Path
-          $payload = "dist\gfn-bridge"
-          dotnet publish gfn-bridge\src\G25GfnWheelBridge\G25GfnWheelBridge.csproj -c Release -r win-x64 --self-contained -o $payload "-p:Libg25Dll=$libg25"
-          dotnet publish gfn-bridge\src\G25GfnBridgeService\G25GfnBridgeService.csproj -c Release -r win-x64 --self-contained -o $payload
-          if (-not (Test-Path "$payload\g25gfnbridge.exe")) { throw "service exe missing from payload" }
+          $payload = "dist\virtual-g29"
+          dotnet publish virtual-g29\src\G25VirtualG29\G25VirtualG29.csproj -c Release -r win-x64 --self-contained -o $payload "-p:Libg25Dll=$libg25"
+          dotnet publish virtual-g29\src\G25VirtualG29Service\G25VirtualG29Service.csproj -c Release -r win-x64 --self-contained -o $payload
+          if (-not (Test-Path "$payload\g25vg29.exe")) { throw "service exe missing from payload" }
       - name: Build installers
         shell: pwsh
         run: |
@@ -65,8 +65,8 @@ jobs:
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           $env:G25_PACKAGE_DIR = (Resolve-Path "dist\g25-w11-driver-$env:G25_VERSION").Path
           & $iscc installer\g25-w11-driver.iss
-          $env:G25_GFN_PAYLOAD_DIR = (Resolve-Path "dist\gfn-bridge").Path
-          & $iscc installer\g25-gfn-bridge.iss
+          $env:G25_VG29_PAYLOAD_DIR = (Resolve-Path "dist\virtual-g29").Path
+          & $iscc installer\g25-virtual-g29.iss
       - name: Publish GitHub release
         shell: pwsh
         env:
@@ -75,6 +75,6 @@ jobs:
           $assets = @(
             "dist/g25-w11-driver-$env:G25_VERSION.zip",
             "dist/g25-w11-driver-$env:G25_VERSION-setup.exe",
-            "dist/g25-gfn-bridge-$env:G25_VERSION-setup.exe"
+            "dist/g25-virtual-g29-$env:G25_VERSION-setup.exe"
           )
           gh release create $env:G25_VERSION $assets --target $env:GITHUB_SHA --title $env:G25_VERSION --notes-file dist\CHANGELOG.md

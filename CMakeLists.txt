@@ -51,25 +51,25 @@ if(G25_BUILD_TRAY)
   if(NOT G25_BUILD_TOOL)
     message(FATAL_ERROR "g25tray currently requires G25_BUILD_TOOL")
   endif()
-  add_library(g25_gfn_bridge src/tray/gfn_bridge.cpp)
-  target_include_directories(g25_gfn_bridge PUBLIC src)
-  target_compile_definitions(g25_gfn_bridge PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00)
-  target_link_libraries(g25_gfn_bridge PUBLIC advapi32 PRIVATE g25_warnings)
+  add_library(g25_virtual_g29 src/tray/virtual_g29.cpp)
+  target_include_directories(g25_virtual_g29 PUBLIC src)
+  target_compile_definitions(g25_virtual_g29 PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00)
+  target_link_libraries(g25_virtual_g29 PUBLIC advapi32 PRIVATE g25_warnings)
 
   add_executable(g25tray WIN32 src/tray/main.cpp src/tray/g25tray.rc)
   target_compile_definitions(g25tray PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00)
-  target_link_libraries(g25tray PRIVATE g25_windows g25_settings g25_gfn_bridge shell32 g25_warnings)
+  target_link_libraries(g25tray PRIVATE g25_windows g25_settings g25_virtual_g29 shell32 g25_warnings)
   if(MINGW)
     target_link_options(g25tray PRIVATE -static)
   endif()
   install(TARGETS g25tray RUNTIME DESTINATION bin)
 
-  # Manual probe (not a ctest): drives the g25gfnbridge service from an
+  # Manual probe (not a ctest): drives the g25vg29 service from an
   # unprivileged process to check the SDDL and status pipe.
-  add_executable(gfn_bridge_probe tests/gfn_bridge_probe.cpp)
-  target_link_libraries(gfn_bridge_probe PRIVATE g25_gfn_bridge g25_warnings)
+  add_executable(virtual_g29_probe tests/virtual_g29_probe.cpp)
+  target_link_libraries(virtual_g29_probe PRIVATE g25_virtual_g29 g25_warnings)
   if(MINGW)
-    target_link_options(gfn_bridge_probe PRIVATE -static)
+    target_link_options(virtual_g29_probe PRIVATE -static)
   endif()
 endif()
 
@@ -80,7 +80,7 @@ add_library(g25_protocol
 target_include_directories(g25_protocol PUBLIC src)
 target_link_libraries(g25_protocol PRIVATE g25_warnings)
 
-# C-ABI shared library over g25_protocol, for the .NET GeForce NOW bridge.
+# C-ABI shared library over g25_protocol, for the .NET Virtual G29 bridge.
 option(G25_BUILD_LIBG25 "Build libg25.dll (C ABI over the protocol library)" ${WIN32})
 if(G25_BUILD_LIBG25)
   add_library(g25_libg25 SHARED src/libg25/libg25.cpp)

@@ -2,9 +2,9 @@
 
 This branch tracks the feasibility work for using a Logitech G25 with GeForce NOW.
 
-The working prototype now lives in the separate `g25-gfn-wheel-bridge` repo. How
+The working prototype now lives in the separate `g25-virtual-g29` repo. How
 it would ship as an optional component of this driver is in
-[gfn-bridge-plugin.md](gfn-bridge-plugin.md). The `tools/gfn-g25-bridge-poc/`
+[virtual-g29-plugin.md](virtual-g29-plugin.md). The `tools/gfn-g25-bridge-poc/`
 folder in this repo is a superseded proof of concept.
 
 Because GeForce NOW needs G HUB running, and G HUB WinUSB-claims the physical

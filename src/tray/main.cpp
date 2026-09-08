@@ -2,7 +2,7 @@
 #include "device/g25_device.h"
 #include "settings/user_settings.h"
 #include "protocol/logitech_protocol.h"
-#include "tray/gfn_bridge.h"
+#include "tray/virtual_g29.h"
 #include "tray/resource.h"
 
 #include <algorithm>
@@ -16,7 +16,7 @@ constexpr UINT timer_id = 1;
 constexpr UINT icon_id = 1;
 constexpr UINT cmd_rotation_base = 100;
 constexpr UINT cmd_exit = 301;
-constexpr UINT cmd_gfn_toggle = 302;
+constexpr UINT cmd_vg29_toggle = 302;
 constexpr int rotations[]{180, 360, 540, 900};
 UINT taskbar_created{};
 NOTIFYICONDATAW icon{};
@@ -111,16 +111,16 @@ void show_menu(HWND window) {
     }
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(rotation_menu), L"Maximum rotation");
 
-    if (gfn::presence() == gfn::Presence::installed) {
-        const auto gfn_status = gfn::status();
-        const bool on = gfn_status.run == gfn::RunState::running ||
-                        gfn_status.run == gfn::RunState::starting;
-        HMENU gfn_menu = CreatePopupMenu();
-        AppendMenuW(gfn_menu, MF_STRING | MF_DISABLED, 0, gfn_status.detail.c_str());
-        AppendMenuW(gfn_menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(gfn_menu, MF_STRING | (on ? MF_CHECKED : 0), cmd_gfn_toggle, L"GeForce NOW mode");
+    if (vg29::presence() == vg29::Presence::installed) {
+        const auto vg29_status = vg29::status();
+        const bool on = vg29_status.run == vg29::RunState::running ||
+                        vg29_status.run == vg29::RunState::starting;
+        HMENU vg29_menu = CreatePopupMenu();
+        AppendMenuW(vg29_menu, MF_STRING | MF_DISABLED, 0, vg29_status.detail.c_str());
+        AppendMenuW(vg29_menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(vg29_menu, MF_STRING | (on ? MF_CHECKED : 0), cmd_vg29_toggle, L"Virtual G29 mode");
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(gfn_menu), L"GeForce NOW bridge");
+        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(vg29_menu), L"Virtual G29");
     }
 
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -162,12 +162,12 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             pending_path = applied_path;
             (void)write_user_settings(settings);
             apply_or_retry(window);
-        } else if (command == cmd_gfn_toggle) {
-            const auto st = gfn::status();
-            if (st.run == gfn::RunState::running || st.run == gfn::RunState::starting)
-                gfn::stop();
+        } else if (command == cmd_vg29_toggle) {
+            const auto st = vg29::status();
+            if (st.run == vg29::RunState::running || st.run == vg29::RunState::starting)
+                vg29::stop();
             else
-                gfn::start();
+                vg29::start();
         } else if (command == cmd_exit) {
             DestroyWindow(window);
         }

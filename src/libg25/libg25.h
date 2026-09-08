@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* C ABI over the g25 protocol library, for consumers outside the C++ tree
- * (the .NET GeForce NOW bridge). Everything here is a thin wrapper over
+ * (the .NET Virtual G29 bridge). Everything here is a thin wrapper over
  * src/protocol/. Byte layouts live there and in docs/protocol.md. */
 #ifndef LIBG25_H
 #define LIBG25_H

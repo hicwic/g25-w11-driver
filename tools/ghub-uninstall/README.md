@@ -42,7 +42,7 @@ physical G25, the `g25-driver` per-user install.
 ## Then test
 
 1. Reboot.
-2. `g25-gfn-wheel-bridge` repo: `Run-Bridge-Admin.ps1 --install-driver --trace-output`.
+2. `virtual-g29/scripts/Run-Bridge-Admin.ps1 --install-driver --trace-output`.
 3. Launch GeForce NOW + a racing game.
 4. Record in `../../docs/geforce-now.md` ("G HUB dependency test", Result):
    - virtual G29 still detected by GFN? (Y/N)

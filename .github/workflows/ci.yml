@@ -30,13 +30,13 @@ jobs:
       - run: cmake --preset ${{ matrix.configure }}
       - run: cmake --build --preset ${{ matrix.build }} --parallel
       - run: ctest --preset ${{ matrix.test }}
-      - name: Build the GeForce NOW bridge (.NET)
+      - name: Build the Virtual G29 bridge (.NET)
         if: matrix.arch == 'x64'
         shell: pwsh
         run: |
           $libg25 = (Get-ChildItem -Recurse -Filter libg25.dll build/${{ matrix.configure }} | Select-Object -First 1).FullName
-          dotnet build gfn-bridge/src/G25GfnWheelBridge/G25GfnWheelBridge.csproj -c Release "-p:Libg25Dll=$libg25"
-          dotnet build gfn-bridge/src/G25GfnBridgeService/G25GfnBridgeService.csproj -c Release
+          dotnet build virtual-g29/src/G25VirtualG29/G25VirtualG29.csproj -c Release "-p:Libg25Dll=$libg25"
+          dotnet build virtual-g29/src/G25VirtualG29Service/G25VirtualG29Service.csproj -c Release
 
   portable:
     name: Portable core

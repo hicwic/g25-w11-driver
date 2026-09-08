@@ -1,16 +1,16 @@
 # Remove every virtual G29 device node so the bridge can create exactly one.
 # A stuck HIDMaestro UMDF device (ROOT\HIDCLASS, oem25) from an earlier
-# default-profile run reports bcdDevice 0100 and makes GeForce NOW spam
+# default-profile run reports bcdDevice 0100 and makes the GFN client spam
 # "No known device with interface number 0 in 046D:C24F:0100".
 # Run elevated. Bridge must be stopped.
 
 $ErrorActionPreference = 'Continue'
-$bridgeRepo = 'C:\Users\steve\Documents\Project\g25-gfn-wheel-bridge'
-$exe = Join-Path $bridgeRepo 'src\G25GfnWheelBridge\bin\Release\net10.0-windows10.0.26100.0\win-x64\g25-gfn-wheel-bridge.exe'
+$repo = Resolve-Path (Join-Path $PSScriptRoot '..\..')
+$exe = Join-Path $repo 'virtual-g29\src\G25VirtualG29\bin\Release\net10.0-windows10.0.26100.0\win-x64\g25-virtual-g29.exe'
 $dotnetRoot = 'C:\Users\steve\Documents\Project\_tools\dotnet10-sdk'
 if (Test-Path (Join-Path $dotnetRoot 'dotnet.exe')) { $env:DOTNET_ROOT = $dotnetRoot; $env:PATH = "$dotnetRoot;$env:PATH" }
 
-Get-Process g25-gfn-wheel-bridge -EA SilentlyContinue | ForEach-Object { Write-Host "killing bridge $($_.Id)"; Stop-Process -Id $_.Id -Force }
+Get-Process g25-virtual-g29 -EA SilentlyContinue | ForEach-Object { Write-Host "killing bridge $($_.Id)"; Stop-Process -Id $_.Id -Force }
 Start-Sleep 1
 
 Write-Host "`n[1] HIDMaestro RemoveAllVirtualControllers"

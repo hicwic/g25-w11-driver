@@ -1,7 +1,7 @@
 # Coexisting with Logitech G HUB
 
 GeForce NOW requires G HUB running for Logitech wheels, so anyone using the
-`g25-gfn-wheel-bridge` will have G HUB installed. G HUB and this driver both want
+`g25-virtual-g29` will have G HUB installed. G HUB and this driver both want
 the physical G25, and out of the box G HUB wins.
 
 ## The conflict
@@ -69,11 +69,11 @@ effort:
    the tray itself is per-user).
 
 Option 2 is the intended long-term answer and ties into the optional-component
-installer described in `gfn-bridge-plugin.md`.
+installer described in `virtual-g29-plugin.md`.
 
 ## Note for the bridge
 
-`g25-gfn-wheel-bridge` reads the physical G25 from its native HID interface
+`g25-virtual-g29` reads the physical G25 from its native HID interface
 (`C299`). If G HUB has WinUSB-claimed the wheel, the bridge's `G25Source` fails
 with `Win32Exception 1167`. The bridge now retries, but the real fix is to keep
 `logi_win_usb.inf` off the machine.
