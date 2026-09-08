@@ -83,9 +83,7 @@ Status status() {
     }
 
     switch (result.run) {
-    case RunState::running:
-        result.detail = result.ffb_active ? L"On - force feedback active" : L"On - waiting for a game";
-        break;
+    case RunState::running:   result.detail = L"On"; break;
     case RunState::starting:  result.detail = L"Starting..."; break;
     case RunState::stopping:  result.detail = L"Stopping..."; break;
     case RunState::stopped:   result.detail = L"Off"; break;

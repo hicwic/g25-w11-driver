@@ -103,6 +103,15 @@ void show_menu(HWND window) {
     HMENU menu = CreatePopupMenu();
     HMENU rotation_menu = CreatePopupMenu();
     AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, status.c_str());
+
+    const bool vg29_installed = vg29::presence() == vg29::Presence::installed;
+    bool vg29_on = false;
+    if (vg29_installed) {
+        const auto vg29_status = vg29::status();
+        vg29_on = vg29_status.run == vg29::RunState::running ||
+                  vg29_status.run == vg29::RunState::starting;
+    }
+
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     for (UINT i = 0; i < std::size(rotations); ++i) {
         const auto text = std::to_wstring(rotations[i]) + L" deg";
@@ -111,17 +120,8 @@ void show_menu(HWND window) {
     }
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(rotation_menu), L"Maximum rotation");
 
-    if (vg29::presence() == vg29::Presence::installed) {
-        const auto vg29_status = vg29::status();
-        const bool on = vg29_status.run == vg29::RunState::running ||
-                        vg29_status.run == vg29::RunState::starting;
-        HMENU vg29_menu = CreatePopupMenu();
-        AppendMenuW(vg29_menu, MF_STRING | MF_DISABLED, 0, vg29_status.detail.c_str());
-        AppendMenuW(vg29_menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(vg29_menu, MF_STRING | (on ? MF_CHECKED : 0), cmd_vg29_toggle, L"Virtual G29 mode");
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(vg29_menu), L"Virtual G29");
-    }
+    if (vg29_installed)
+        AppendMenuW(menu, MF_STRING | (vg29_on ? MF_CHECKED : 0), cmd_vg29_toggle, L"G29 Mode");
 
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, cmd_exit, L"Exit");

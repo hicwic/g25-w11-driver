@@ -14,7 +14,7 @@ Presence presence();
 struct Status {
     RunState run{RunState::stopped};
     bool ffb_active{false};
-    std::wstring detail;   // short line for the menu, e.g. "Running - force feedback"
+    std::wstring detail;   // short line for the menu, e.g. "On" / "Off" / "Starting..."
 };
 
 Status status();
