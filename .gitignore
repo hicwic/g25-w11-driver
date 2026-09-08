@@ -15,4 +15,5 @@
 # GFN bridge (.NET) build output and local test artifacts
 /gfn-bridge/**/bin/
 /gfn-bridge/**/obj/
+/gfn-bridge/dist/
 /gfn-bridge/artifacts/

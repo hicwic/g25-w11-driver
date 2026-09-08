@@ -36,14 +36,14 @@ static class ServiceInstall
 
     public static int Uninstall()
     {
-        Sc($"stop {ServiceName}");
+        Sc($"stop {ServiceName}", quiet: true);                      // ok if already stopped / absent
         var rc = Sc($"delete {ServiceName}");
         if (rc != 0 && rc != 1060) return Fail("delete", rc);        // 1060 = not installed
         Console.WriteLine($"{ServiceName} removed.");
         return 0;
     }
 
-    private static int Sc(string arguments)
+    private static int Sc(string arguments, bool quiet = false)
     {
         var psi = new ProcessStartInfo("sc.exe", arguments)
         {
@@ -55,7 +55,8 @@ static class ServiceInstall
         using var p = Process.Start(psi)!;
         var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
         p.WaitForExit();
-        if (p.ExitCode != 0) Console.Error.WriteLine($"sc {arguments.Split(' ')[0]} -> {p.ExitCode}: {output.Trim()}");
+        if (p.ExitCode != 0 && !quiet)
+            Console.Error.WriteLine($"sc {arguments.Split(' ')[0]} -> {p.ExitCode}: {output.Trim()}");
         return p.ExitCode;
     }
 
