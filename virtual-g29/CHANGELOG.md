@@ -7,6 +7,12 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-08
+
+First release with the Virtual G29 bridge as an optional component of
+**g25-driver**: `g25vg29` on-demand service, tray toggle, bundled HidHide,
+event-driven submit loop, and the `latency` diagnostic.
+
 ### Added - `latency` command (2026-09-08)
 
 `g25-virtual-g29.exe latency [--seconds N]` measures the input pipeline:
