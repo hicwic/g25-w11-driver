@@ -116,15 +116,26 @@ Bridge side (tracked in the bridge repo `docs/plugin-integration.md`):
 - CI: a second job builds the .NET bridge; release bundles it as a separate
   asset and inside the installer's optional feature.
 
+## Settled by the 2026-09-08 testing
+
+- **It works.** Steering + FFB in Wreckfest over GeForce NOW, with G HUB
+  running, the `logitech-g29-usbip` profile, and exactly one virtual G29.
+- **The `:0100` trap.** A stale HIDMaestro UMDF virtual G29 makes GFN reject the
+  wheel. The bridge now purges stale virtual G29s before starting.
+- **G HUB WinUSB-claims the physical G25.** `logi_win_usb.inf` matches the
+  compat-mode `C294` id. Must be removed from the driver store; the installer /
+  a scheduled task should keep it removed. See
+  [ghub-coexistence.md](ghub-coexistence.md). **This is the main open work item
+  for making the plugin robust.**
+
 ## Open questions
 
-1. **FFB translation.** Captured virtual-G29 output reports are Logitech
-   command-format with zero payloads so far; no real force confirmed. Needs a
-   capture with a deliberate in-game force. See the bridge's
+1. **Keep `logi_win_usb.inf` off the machine automatically.** Installer removes
+   it + a scheduled task re-removes it after G HUB updates (option 2 in
+   `ghub-coexistence.md`).
+2. **FFB translation.** Passthrough works but is not protocol-accurate. Build a
+   real virtual-G29 -> G25 table in `libg25`. See the bridge's
    `docs/ffb-protocol.md`.
-2. **G HUB dependency.** NVIDIA requires "G HUB running". G HUB claims the
-   virtual G29. Does output-report traffic survive with G HUB removed? Test in
-   progress (`docs/geforce-now.md`, "G HUB dependency test").
 3. **Licensing.** If `libg25` (GPL-2.0-only) is linked into the bridge, the
    bridge's own license must be GPL-compatible. Currently undecided; the bridge
    repo has no LICENSE yet.

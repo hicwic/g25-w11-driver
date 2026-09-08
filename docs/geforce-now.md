@@ -7,6 +7,10 @@ it would ship as an optional component of this driver is in
 [gfn-bridge-plugin.md](gfn-bridge-plugin.md). The `tools/gfn-g25-bridge-poc/`
 folder in this repo is a superseded proof of concept.
 
+Because GeForce NOW needs G HUB running, and G HUB WinUSB-claims the physical
+G25, read [ghub-coexistence.md](ghub-coexistence.md) - it applies to local use
+of this driver too.
+
 ## Current evidence
 
 NVIDIA's public support article, updated 2026-05-15, says GeForce NOW supports a selected list of racing wheels with force feedback on the latest Windows native app. The Windows requirements are Windows 11 or newer and Logitech G HUB running in the background for Logitech wheels. The supported Logitech devices listed by NVIDIA are PRO Racing Wheel, RS50, G923, G920, G29, and the Driving Force Shifter. The Logitech G25 is not listed.
