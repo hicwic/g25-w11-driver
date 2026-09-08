@@ -101,17 +101,19 @@ between `g25tray`, `g25ff.dll` and the bridge worker.
 - HIDMaestro driver install still happens via the bridge's `--install-driver`
   (config flag on first run); the installer can also do it up front.
 
-### Phase 4 - tray integration
-- Probe on menu open: `gfn-bridge/` payload present AND `g25gfnbridge` service
-  registered.
-- Not present -> single item "Install GeForce NOW bridge..." opening the docs /
-  release page. Present -> submenu "Virtual G29":
-  - status line
-  - "GeForce NOW mode" checkbox (StartService / ControlService STOP)
-  - "Start automatically with GeForce NOW"
-  - (Phase 7) "Local games mode (hides the G25)" checkbox
-- The tray already keeps the G25 native - reuse that; just don't fight the
-  bridge for the writer mutex.
+### Phase 4 - tray integration (done, GUI click still to try)
+- `src/tray/gfn_bridge.{h,cpp}` (`g25_gfn_bridge` lib): `presence()` (is the
+  `g25gfnbridge` service registered?), `status()` (SCM state + a read of
+  `\\.\pipe\g25gfnbridge`), `start()` / `stop()` via the SCM.
+- `main.cpp`: when the service is present, `show_menu` adds a **GeForce NOW
+  bridge** submenu - status line + a checked/unchecked **GeForce NOW mode** item
+  that toggles the service. Absent -> no item.
+- Verified from an **unprivileged** `gfn_bridge_probe`: `start()` / `stop()`
+  succeed (the `IU` SDDL grant works), `status()` reads the pipe, the worker and
+  virtual G29 are gone after stop.
+- Still TODO: "Install GeForce NOW bridge..." entry when the payload is present
+  but the service is not; "start automatically with GeForce NOW"; Phase 7
+  "local games" checkbox.
 
 ### Phase 7 - local G29 emulation (follow-up, after 1-6 ship)
 The virtual G29 is a normal DirectInput/HID FFB device, so it also works for
