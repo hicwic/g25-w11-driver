@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'  # keeps Invoke-WebRequest fast on CI
 
 $version = 'v1.5.230.0'
 $file    = 'HidHide_1.5.230_x64.exe'
