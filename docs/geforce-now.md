@@ -159,44 +159,64 @@ Test procedure:
 4. Check: does the virtual G29 still get detected? Does it still receive output
    reports (`--trace-output`)? Does steering still work?
 
-### Result (2026-09-08): G HUB is a hard dependency
+### Result (2026-09-08): inconclusive on G HUB; G HUB WinUSB-claims the G25
 
-Tested with G HUB fully uninstalled, rebooted, bridge running with
-`--trace-output`, GeForce NOW + Wreckfest:
+**The no-G HUB test was run with the wrong HIDMaestro profile** (`logitech-g29`
+default instead of `logitech-g29-usbip`), so it does NOT establish whether G HUB
+is required. The plain `logitech-g29` profile presents only a HID collection:
+DirectInput enumerates it but neither G HUB nor (apparently) GeForce NOW engages
+it. Only `logitech-g29-usbip`, which carries a full USB device/config
+descriptor, gets G HUB to bind.
 
-| | With G HUB (v3/v4) | Without G HUB |
-| --- | --- | --- |
-| Wheel visible in the streamed game | yes | **yes** |
-| Steering reaches the remote game | not confirmed | **no** |
-| Output reports to the virtual G29 (`OUT ...`) | many | **zero** |
-| Force feedback | (init chatter only) | **none** |
+What was actually observed:
 
-The bridge itself was healthy without G HUB: it read the physical G25 (wheel
-values ranged 0.10-0.73 while turning), created the virtual G29, and DirectInput
-enumerated it (`G29 Driving Force Racing Wheel`, product `c24f:046d`). The
-device is detected, but inert.
+| Run | Profile | G HUB | `OUT` reports | Outcome |
+| --- | --- | --- | --- | --- |
+| v3/v4 (codex) | `logitech-g29-usbip` | installed (old config) | many | sustained; physical G25 stayed on native HID `c299` |
+| 2026-09-08 #1 | `logitech-g29` (default) | uninstalled | zero | wheel detected in game, inert |
+| 2026-09-08 #2 | `logitech-g29` (default) | reinstalled | zero | same |
+| 2026-09-08 #3 | `logitech-g29-usbip` | reinstalled | `13`, `F3` then **bridge crash** | see below |
 
-Conclusions:
+Run #3, the first valid one: G HUB immediately started initialising the virtual
+G29 (`OUT raw=13...`, `raw=F3...`). Then the bridge died with
+`Win32Exception 1167` (device not connected). Cause, from the PnP state
+afterwards:
 
-- **The `OUT` reports captured in v3/v4 were G HUB initialising the virtual G29**
-  (`0xF3` stop forces, `0xF5` disable autocenter, repeating `0xFE 0x0D` / `0x14`
-  keepalive) - classic G HUB device bring-up, not game force feedback. With
-  G HUB gone, nothing writes to the device.
-- GeForce NOW's Logitech-wheel input and FFB path runs **through G HUB**. A bare
-  HIDMaestro G29 that G HUB is not managing gets enumerated (name shows up) but
-  GFN neither forwards its input nor sends it FFB. This matches NVIDIA's stated
-  requirement that G HUB must be running.
-- Still not established, even with G HUB: whether the *remote* game actually
-  receives steering. The v3/v4 logs only recorded the bridge's local read and
-  the G HUB init writes. Next test must confirm remote input with G HUB
-  reinstalled.
+```
+OK       LGHUBWinUSB   Logitech G29 Driving Force Racing Wheel (PS3)   USB\VID_046D&PID_C294
+Unknown                                                               HID\VID_046D&PID_C299
+```
 
-Implication for `gfn-bridge-plugin.md`: the optional component's prerequisites
-are HIDMaestro **and** G HUB (running). The FFB translation work in the bridge's
-`docs/ffb-protocol.md` needs a fresh capture that separates G HUB init chatter
-from actual in-game forces.
+**The freshly reinstalled G HUB took over the physical G25**: switched it to
+`c294` compatibility mode, bound its `LGHUBWinUSB` driver, and now presents it as
+a "G29 (PS3)". The native HID interface the bridge reads (`c299`) disappeared, so
+`G25Source` lost its handle.
 
-Evidence: `tools/ghub-uninstall/bridge-trace-no-ghub.txt`.
+The old G HUB (before this session's uninstall) did **not** do this - the
+baseline shows the G25 on native HID `c299` with G HUB installed. Wiping
+`%ProgramData%\LGHUB` and `%LOCALAPPDATA%\LGHUB` during uninstall removed
+whatever config kept G HUB off the physical wheel; a default G HUB install
+claims every Logitech wheel it can.
+
+Open, in priority order:
+
+1. With G HUB now presenting the physical G25 as a "G29 (PS3)", does GeForce NOW
+   accept it **with no bridge at all**? (USB id is still `c294`, not an
+   allowlisted `c24f`, so probably not - but GFN may query G HUB rather than
+   scan USB.)
+2. Is there a G HUB setting to release the physical G25 back to native HID, to
+   recover codex's working arrangement (G HUB manages only the virtual G29)?
+3. Only then: does the *remote* game receive steering, and does GFN send real
+   FFB vs. just G HUB init chatter?
+
+The bridge also needs to survive USB re-enumeration (reconnect `G25Source` /
+`G25ForceFeedbackRelay` on I/O failure instead of exiting) and to detect the G25
+dropping to `c294` and re-issue the native-mode switch - which is exactly what
+`g25tray.exe` already does, an argument for running the tray alongside the
+bridge.
+
+Evidence: `tools/ghub-uninstall/bridge-trace-no-ghub.txt` (run #1),
+`g25-gfn-wheel-bridge/artifacts/ghub-present-retest/` (run #3).
 
 Reinstall path: download G HUB from
 `https://www.logitechg.com/software/g-hub`.
