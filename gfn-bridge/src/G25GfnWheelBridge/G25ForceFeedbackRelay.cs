@@ -25,8 +25,17 @@ sealed class G25ForceFeedbackRelay : IDisposable
     private readonly BlockingCollection<byte[]> _commands = new(512);
     private readonly Thread _writer;
     private int _dropped;
+    private long _received;
     private volatile bool _stopping;
     private Exception? _failure;
+
+    /// <summary>Game FFB reports received since the last call (for telemetry).</summary>
+    public long TakeReceivedDelta()
+    {
+        var now = Interlocked.Read(ref _received);
+        return now - Interlocked.Exchange(ref _lastReported, now);
+    }
+    private long _lastReported;
 
     private G25ForceFeedbackRelay(HidStream stream, string productName)
     {
@@ -106,6 +115,7 @@ sealed class G25ForceFeedbackRelay : IDisposable
     {
         if (_failure != null || rawG29Report.Length < 1) return;
 
+        Interlocked.Increment(ref _received);
         foreach (var report in Libg25.FfbTranslate(rawG29Report))
             if (!_commands.TryAdd(report)) Interlocked.Increment(ref _dropped);
     }

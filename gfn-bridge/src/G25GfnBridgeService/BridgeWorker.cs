@@ -127,18 +127,20 @@ sealed partial class BridgeWorker(BridgeStatus status, ILogger<BridgeWorker> log
 
         if (line.StartsWith("Bridge is running", StringComparison.Ordinal))
             status.Update(s => s.State = "running");
-        else if (WheelLine().Match(line) is { Success: true } m)
-            status.Update(s => s.Wheel = double.Parse(m.Groups[1].Value.Replace(',', '.'), CultureInfo.InvariantCulture));
+        else if (TelemetryLine().Match(line) is { Success: true } m)
+            status.Update(s =>
+            {
+                s.Wheel = double.Parse(m.Groups[1].Value.Replace(',', '.'), CultureInfo.InvariantCulture);
+                s.FfbActive = int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture) > 0;
+            });
         else if (line.StartsWith("Creating virtual wheel:", StringComparison.Ordinal))
             status.Update(s => s.VirtualDevice = line["Creating virtual wheel:".Length..].Trim());
-        else if (line.StartsWith("OUT source=", StringComparison.Ordinal))
-            status.Update(s => s.FfbActive = true);
         else if (isError && (line.Contains("error", StringComparison.OrdinalIgnoreCase) || line.Contains("failed", StringComparison.OrdinalIgnoreCase)))
             status.Update(s => s.LastError = line);
     }
 
-    [GeneratedRegex(@"wheel=([0-9.,]+)\s")]
-    private static partial Regex WheelLine();
+    [GeneratedRegex(@"wheel=([0-9.,]+).*ffbHz=(\d+)")]
+    private static partial Regex TelemetryLine();
 
     private sealed record Config
     {

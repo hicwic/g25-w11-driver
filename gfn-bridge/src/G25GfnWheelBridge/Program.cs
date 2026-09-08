@@ -160,7 +160,7 @@ static class Program
         using var source = G25Source.Open();
         Console.WriteLine($"Reading: {source.Name}");
         Console.WriteLine("No virtual device is created in dry-run mode. Ctrl+C stops.");
-        return PumpG25(null, source, options, printEveryFrame: false);
+        return PumpG25(null, source, null, options, printEveryFrame: false);
     }
 
     static int Bridge(BridgeOptions options)
@@ -240,7 +240,7 @@ static class Program
             ? "Force feedback relay: virtual G29 -> physical G25 enabled (raw passthrough, see docs/ffb-protocol.md)."
             : "Force feedback relay: disabled.");
         Console.WriteLine("Ctrl+C removes the virtual device and exits.");
-        return PumpG25(target, source, options, printEveryFrame: false);
+        return PumpG25(target, source, forceFeedback, options, printEveryFrame: false);
     }
 
     static int Cleanup()
@@ -300,7 +300,7 @@ static class Program
         }
     }
 
-    static int PumpG25(HMController? target, G25Source source, BridgeOptions options, bool printEveryFrame)
+    static int PumpG25(HMController? target, G25Source source, G25ForceFeedbackRelay? ffb, BridgeOptions options, bool printEveryFrame)
     {
         var axes = new Dictionary<HMAxis, float>
         {
@@ -332,7 +332,8 @@ static class Program
             if (printEveryFrame || sec != lastPrint)
             {
                 lastPrint = sec;
-                Console.WriteLine($"wheel={axes[HMAxis.X]:0.000} accel={axes[HMAxis.Z]:0.000} brake={axes[HMAxis.Rz]:0.000} clutch={axes[HMAxis.Y]:0.000} buttons=0x{(uint)state.Buttons:X} hat={state.Hat}");
+                var ffbHz = ffb?.TakeReceivedDelta() ?? 0;
+                Console.WriteLine($"wheel={axes[HMAxis.X]:0.000} accel={axes[HMAxis.Z]:0.000} brake={axes[HMAxis.Rz]:0.000} clutch={axes[HMAxis.Y]:0.000} buttons=0x{(uint)state.Buttons:X} hat={state.Hat} ffbHz={ffbHz}");
             }
 
             Thread.Sleep(delayMs);
