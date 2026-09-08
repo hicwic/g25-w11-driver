@@ -61,16 +61,17 @@ between `g25tray`, `g25ff.dll` and the bridge worker.
 - Root `.gitignore`: add `gfn-bridge/**/bin/`, `obj/`, `gfn-bridge/artifacts/`.
 - Archive `g25-gfn-wheel-bridge` on GitHub; leave a README pointer.
 
-### Phase 1 - `libg25`
-- New CMake static target `libg25` from `src/protocol/*` + the pure-decode parts
-  of `src/device/` (`g25_device` identity/decoding, not the transport).
-- `g25tool`, `g25ff`, `g25tray` link `libg25` instead of compiling the protocol
-  sources directly. No behaviour change; tests stay green.
-- New target `libg25_c` -> `libg25.dll` with a C ABI (`libg25.h`):
-  `g25_identify_model`, `g25_decode_windows_input`, `g25_cmd_native_mode`,
-  `g25_cmd_set_range`, `g25_cmd_stop_all`, `g25_cmd_disable_autocenter`,
-  `g25_ffb_translate` (virtual-G29 report -> G25 command).
-- Vector tests for `g25_ffb_translate` under `tests/`.
+### Phase 1 - `libg25` (done)
+- `g25_protocol` already is the shared static core (`src/protocol/*`), linked by
+  `g25tool` / `g25ff` / `g25tray`. No change there.
+- New `src/libg25/` -> `libg25.dll` (`G25_BUILD_LIBG25`, C ABI in `libg25.h`):
+  `g25_identify_model`, `g25_decode_input`, `g25_cmd_native_mode` /
+  `_set_range` / `_stop_all` / `_disable_autocenter`, `g25_ffb_translate`,
+  `g25_libg25_version`.
+- `g25_ffb_translate` is Phase 1 passthrough (matches the shipping bridge);
+  protocol-accurate translation with `force_feedback.h` encoders is Phase 2+.
+- `tests/libg25_tests.cpp` - golden vectors shared with `protocol_tests`, runs
+  on the ubuntu `portable` CI job.
 
 ### Phase 2 - bridge on `libg25`
 - `gfn-bridge/src/.../Libg25.cs`: P/Invoke wrapper over `libg25.dll`.
@@ -95,10 +96,32 @@ between `g25tray`, `g25ff.dll` and the bridge worker.
 - Probe on menu open: `gfn-bridge/` payload present AND `g25gfnbridge` service
   registered.
 - Not present -> single item "Install GeForce NOW bridge..." opening the docs /
-  release page. Present -> submenu: status line, "GeForce NOW mode" checkbox
-  (StartService / ControlService STOP), "Start automatically with GeForce NOW".
+  release page. Present -> submenu "Virtual G29":
+  - status line
+  - "GeForce NOW mode" checkbox (StartService / ControlService STOP)
+  - "Start automatically with GeForce NOW"
+  - (Phase 7) "Local games mode (hides the G25)" checkbox
 - The tray already keeps the G25 native - reuse that; just don't fight the
   bridge for the writer mutex.
+
+### Phase 7 - local G29 emulation (follow-up, after 1-6 ship)
+The virtual G29 is a normal DirectInput/HID FFB device, so it also works for
+**local** games - useful for sims that gate FFB profiles by wheel model (ACC,
+F1, sometimes iRacing) or that accept a G29 but not a G25.
+
+The catch is only local: with both the physical G25 and the virtual G29 present,
+local DirectInput games see two wheels. (GFN does not - it filters the G25 out,
+`046D:C299` is not in `RIDevices.json`.)
+
+Hiding the G25 from local games while the bridge still reads it needs a HID
+filter driver. Use **HidHide** (the ViGEm-ecosystem tool for exactly this
+pattern): install its driver, configure it to cloak `046D:C299` and allowlist
+the bridge worker process. `pnputil /disable-device` does not work - it would
+kill the bridge's handle too.
+
+Not in the initial scope because: it is unproven (does ACC/F1 actually behave
+better as a G29?) and HidHide is its own dependency + install. Ship GFN mode
+first; add this as a second checkbox once validated.
 
 ### Phase 5 - installers
 - Core installer unchanged (`installer/g25-w11-driver.iss`, per-user).
