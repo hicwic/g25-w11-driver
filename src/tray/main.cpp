@@ -48,7 +48,12 @@ ApplyResult apply_to_wheel() {
             return info.vid == logitech_vid && identify_model(info.pid, info.revision) == Model::g25;
         });
         if (found == devices.end()) {
-            status = L"G25 not connected";
+            // While G29 mode is on, the bridge hides the physical G25 from other
+            // processes (HidHide), so not seeing it here is expected, not a fault.
+            const bool vg29_running = vg29::presence() == vg29::Presence::installed &&
+                (vg29::status().run == vg29::RunState::running ||
+                 vg29::status().run == vg29::RunState::starting);
+            status = vg29_running ? L"G29 mode active (G25 hidden)" : L"G25 not connected";
             applied_path.clear();
             pending_path.clear();
             applied_rotation = 0;
@@ -168,6 +173,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 vg29::stop();
             else
                 vg29::start();
+            // The wheel comes and goes as the bridge cloaks/uncloaks it; refresh
+            // the status line even if no device broadcast arrives.
+            SetTimer(window, timer_id, 2000, nullptr);
         } else if (command == cmd_exit) {
             DestroyWindow(window);
         }

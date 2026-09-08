@@ -25,6 +25,7 @@ static class Program
                 "dry-run" => DryRun(ParseOptions(rest)),
                 "bridge" => Bridge(ParseOptions(rest)),
                 "install-driver" => InstallDriverOnly(),
+                "hidhide-revert" => HidHideRevert(),
                 "cleanup" => Cleanup(),
                 "help" or "--help" or "-h" => Help(),
                 _ => Fail($"Unknown command: {command}")
@@ -65,6 +66,7 @@ static class Program
         Console.WriteLine("  --trace-output          Print host output/feature reports sent to the virtual G29");
         Console.WriteLine("  --no-ffb                Do not relay G29 force-feedback commands to the G25");
         Console.WriteLine("  --ffb-translate         Normalise GFN FFB reports to lg4ff form (default: passthrough)");
+        Console.WriteLine("  --no-hide-g25           Leave the physical G25 visible to local games (needs HidHide otherwise)");
         Console.WriteLine();
         Console.WriteLine("First-run setup (Administrator):");
         Console.WriteLine("  powershell -ExecutionPolicy Bypass -File scripts\\Run-Bridge-Admin.ps1 -BridgeArgs '--install-driver'");
@@ -212,6 +214,10 @@ static class Program
         using var target = ctx.CreateController(profile);
         ctx.FinalizeNames();
 
+        // Hide the physical G25 from local games so they bind the virtual G29.
+        // Reverted when this scope unwinds (Ctrl+C, stop-event, or a throw).
+        using var hidHide = options.HideLocalG25 ? HidHide.Cloak(Environment.ProcessPath ?? "") : null;
+
         // Serialise G25 HID output with g25tool / g25ff.dll / g25tray, which take
         // the same mutex around their writes.
         using var writerLock = AcquireWriterLock();
@@ -252,7 +258,16 @@ static class Program
         Console.WriteLine("Removing HIDMaestro virtual controllers...");
         HMContext.RemoveAllVirtualControllers();
         PurgeStaleVirtualWheels(0x046D, 0xC24F);
+        HidHide.RevertLeftoverState();
         Console.WriteLine("Cleanup done.");
+        return 0;
+    }
+
+    // Undo a HidHide cloak a bridge worker left behind after a hard kill. The
+    // service calls this on stop; harmless (no-op) when nothing is pending.
+    static int HidHideRevert()
+    {
+        HidHide.RevertLeftoverState();
         return 0;
     }
 
@@ -390,6 +405,8 @@ static class Program
                 case "--trace-output": options.TraceOutput = true; break;
                 case "--no-ffb": options.RelayForceFeedback = false; break;
                 case "--ffb-translate": options.FfbTranslate = true; break;
+                case "--hide-g25": options.HideLocalG25 = true; break;
+                case "--no-hide-g25": options.HideLocalG25 = false; break;
                 case "--keep-existing": options.KeepExisting = true; break;
                 case "--wheel-range":
                     if (!int.TryParse(RequireValue(args, ref i, "--wheel-range"), out var deg)) throw new ArgumentException("--wheel-range must be an integer (40-900, or 0 to skip)");

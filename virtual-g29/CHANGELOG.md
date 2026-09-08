@@ -7,6 +7,21 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+### Added - hide the physical G25 from local games (2026-09-08)
+
+The bridge worker now drives **HidHide** (nefarius/HidHide, MIT) while it runs:
+the physical G25 (`046D:C299`) is hidden from every process except the worker,
+so local DirectInput games bind the virtual G29 instead of seeing two wheels.
+GeForce NOW is unaffected either way.
+
+- `HidHide.cs`: shell `HidHideCLI.exe`, hide the G25 nodes, whitelist the
+  worker, `--cloak-on`; revert precisely on stop. Session-state file survives a
+  hard kill; `hidhide-revert` / `cleanup` / the next start clean it up.
+- Off with `hideLocalG25: false` (config) or `--no-hide-g25`. Absent HidHide =>
+  one log line, bridge continues.
+- Installer bundles the HidHide setup and runs it silently (`/qn /norestart`).
+- Tray shows `G29 mode active (G25 hidden)` instead of `G25 not connected`.
+
 ### Working (2026-09-08)
 
 End to end confirmed in Wreckfest over GeForce NOW: **steering and force

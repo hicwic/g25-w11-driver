@@ -12,8 +12,11 @@
 # Runtime output of tools/ghub-uninstall/uninstall-ghub.ps1
 /tools/ghub-uninstall/*.transcript.txt
 
-# GFN bridge (.NET) build output and local test artifacts
+# Virtual G29 bridge (.NET) build output and local test artifacts
 /virtual-g29/**/bin/
 /virtual-g29/**/obj/
 /virtual-g29/dist/
 /virtual-g29/artifacts/
+# Bundled third-party setup binaries are fetched, not committed (see
+# virtual-g29/third_party/HidHide/*/README.md)
+/virtual-g29/third_party/**/*.exe

@@ -13,6 +13,9 @@
 #if PayloadDir == ""
   #define PayloadDir "..\virtual-g29\dist"
 #endif
+; HidHide setup - fetched into the payload dir by CI or
+; virtual-g29\scripts\Fetch-HidHide.ps1 (not committed to git).
+#define HidHideSetup "HidHide_1.5.230_x64.exe"
 
 [Setup]
 AppId={{1D9C4A17-8E52-4B3F-A6D1-2F7B0C954E88}
@@ -36,12 +39,18 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-WelcomeLabel2=This installs the optional Virtual G29 wheel bridge.%n%nIt adds the HIDMaestro virtual HID driver (UMDF, self-signed test certificate) and an on-demand Windows service. The core G25 driver is not changed. Enable the bridge from the G25 Control tray menu once installed.
+WelcomeLabel2=This installs the optional Virtual G29 wheel bridge.%n%nIt adds the HIDMaestro virtual HID driver (UMDF, self-signed test certificate), the HidHide device-hiding driver, and an on-demand Windows service. The core G25 driver is not changed. Enable the bridge from the G25 Control tray menu once installed.%n%nHidHide may ask for a reboot; the bridge works fully after it.
 
 [Files]
-Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadDir}\*"; DestDir: "{app}"; Excludes: "{#HidHideSetup}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Bundled but not kept on disk - only used to install HidHide during setup.
+Source: "{#PayloadDir}\{#HidHideSetup}"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Run]
+; Hide the physical G25 from local DirectInput games (does nothing to GeForce NOW).
+Filename: "{tmp}\{#HidHideSetup}"; Parameters: "/qn /norestart"; \
+  StatusMsg: "Installing HidHide (hides the G25 from local games)..."; \
+  Flags: runhidden waituntilterminated; Check: not HidHideInstalled
 ; Install the HIDMaestro driver up front so the first service start is quick.
 Filename: "{app}\g25-virtual-g29.exe"; Parameters: "install-driver"; \
   StatusMsg: "Installing the HIDMaestro virtual HID driver..."; Flags: runhidden waituntilterminated
@@ -54,6 +63,12 @@ Filename: "{app}\g25vg29.exe"; Parameters: "uninstall"; Flags: runhidden waitunt
 Filename: "{app}\g25-virtual-g29.exe"; Parameters: "cleanup"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveVirtualG29"
 
 [Code]
+function HidHideInstalled: Boolean;
+begin
+  Result := RegKeyExists(HKLM, 'SOFTWARE\Nefarius Software Solutions e.U.\HidHide') or
+            RegKeyExists(HKLM64, 'SOFTWARE\Nefarius Software Solutions e.U.\HidHide');
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   { Advisory: G HUB's logi_win_usb.inf WinUSB-claims the G25 in compat mode. }

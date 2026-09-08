@@ -27,6 +27,10 @@ sealed record BridgeOptions
     // Normalise GeForce NOW FFB reports to lg4ff form. Default off = raw passthrough.
     public bool FfbTranslate { get; set; }
     public bool KeepExisting { get; set; }
+    // Hide the physical G25 from local DirectInput games via HidHide while the
+    // bridge runs, so they see only the virtual G29. No effect on GeForce NOW
+    // (which already ignores 046D:C299). Silently skipped if HidHide is absent.
+    public bool HideLocalG25 { get; set; } = true;
     // Sent to the G25 at startup so it is usable without G HUB. 0 = don't set range.
     public int WheelRangeDegrees { get; set; } = 900;
     // Named Windows event a supervising service signals for a clean stop.

@@ -44,6 +44,7 @@ jobs:
           $payload = "dist\virtual-g29"
           dotnet publish virtual-g29\src\G25VirtualG29\G25VirtualG29.csproj -c Release -r win-x64 --self-contained -o $payload "-p:Libg25Dll=$libg25"
           dotnet publish virtual-g29\src\G25VirtualG29Service\G25VirtualG29Service.csproj -c Release -r win-x64 --self-contained -o $payload
+          .\virtual-g29\scripts\Fetch-HidHide.ps1 -OutDir $payload
       - name: Build installers
         shell: pwsh
         run: |

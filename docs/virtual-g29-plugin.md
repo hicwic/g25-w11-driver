@@ -5,8 +5,8 @@ Status: **all phases done and validated** (2026-09-08). Branch
 `g25-virtual-g29-<ver>-setup.exe` (Dev Build artifact): HIDMaestro driver +
 `g25vg29` service + tray toggle + steering & FFB in GeForce NOW.
 
-Left: archive the old standalone repo, drop `tools/gfn-g25-bridge-poc/`, open a
-PR to `main`, cut a `v*` release, and Phase 7 (local G29 emulation + HidHide).
+Left: archive the old standalone repo, open a PR to `main`, cut a `v*` release,
+and the on-hardware FFB A/B test (`--ffb-translate`).
 
 Background on *why* a bridge is needed: [geforce-now.md](geforce-now.md). How the
 GFN client actually works: [gfn-client-internals.md](gfn-client-internals.md).
@@ -121,24 +121,35 @@ between `g25tray`, `g25ff.dll` and the bridge worker.
   but the service is not; "start automatically"; Phase 7
   "local games" checkbox.
 
-### Phase 7 - local G29 emulation (follow-up, after 1-6 ship)
+### Phase 7 - hide the physical G25 from local games (done)
 The virtual G29 is a normal DirectInput/HID FFB device, so it also works for
 **local** games - useful for sims that gate FFB profiles by wheel model (ACC,
-F1, sometimes iRacing) or that accept a G29 but not a G25.
+F1, sometimes iRacing) or that accept a G29 but not a G25. But with both the
+physical G25 and the virtual G29 present, local DirectInput games see two
+wheels. (GFN does not - `046D:C299` is not in `RIDevices.json`.)
 
-The catch is only local: with both the physical G25 and the virtual G29 present,
-local DirectInput games see two wheels. (GFN does not - it filters the G25 out,
-`046D:C299` is not in `RIDevices.json`.)
+**HidHide** (nefarius/HidHide, MIT) is a HID class filter that hides a device
+from every process except a whitelist. `pnputil /disable-device` cannot be used
+- it would kill the bridge's own handle too.
 
-Hiding the G25 from local games while the bridge still reads it needs a HID
-filter driver. Use **HidHide** (the ViGEm-ecosystem tool for exactly this
-pattern): install its driver, configure it to cloak `046D:C299` and allowlist
-the bridge worker process. `pnputil /disable-device` does not work - it would
-kill the bridge's handle too.
+- **Bundled + silent-installed** by `installer/g25-virtual-g29.iss`
+  (`HidHide_x.exe /qn /norestart`, skipped if already present). The setup binary
+  is fetched, not committed - see `virtual-g29/third_party/HidHide/*/README.md`.
+- **Driven by the bridge worker** (`HidHide.cs`): on start it shells the
+  installed `HidHideCLI.exe` to `--dev-hide` every `046D:C299` node (from
+  `--dev-gaming`), `--app-reg` itself, and `--cloak-on` (only if not already on).
+  On stop it reverts exactly those entries. A session-state file
+  (`%ProgramData%\g25vg29\hidhide-session.json`) lets the next start - or the
+  service's `hidhide-revert` verb, or `cleanup` - undo a cloak left by a hard
+  kill.
+- **Config:** `hideLocalG25` (default true) in `config.json`; `--no-hide-g25`
+  on the worker. If HidHide is absent the bridge logs one line and runs without
+  cloaking (GeForce NOW is unaffected regardless).
+- **Tray:** while the service runs and the G25 is hidden, the status line reads
+  `G29 mode active (G25 hidden)` instead of `G25 not connected`.
 
-Not in the initial scope because: it is unproven (does ACC/F1 actually behave
-better as a G29?) and HidHide is its own dependency + install. Ship GFN mode
-first; add this as a second checkbox once validated.
+Uninstalling the bridge does **not** remove HidHide (other tools may use it); it
+only reverts the cloak.
 
 ### Phase 5 - installers (done, ISCC / real install still to run)
 - Core installer unchanged (`installer/g25-w11-driver.iss`, per-user).

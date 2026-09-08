@@ -81,6 +81,7 @@ sealed partial class BridgeWorker(BridgeStatus status, ILogger<BridgeWorker> log
                     log.LogWarning("bridge did not stop in 10s; killing");
                     try { proc.Kill(entireProcessTree: true); } catch { }
                 }
+                RevertHidHide(exe);
                 status.Update(s => { s.State = "stopped"; s.VirtualDevice = null; s.FfbActive = false; });
                 return;
             }
@@ -116,8 +117,29 @@ sealed partial class BridgeWorker(BridgeStatus status, ILogger<BridgeWorker> log
         if (cfg.InvertClutch) yield return "--invert-clutch";
         if (cfg.InvertAccelerator) yield return "--invert-accelerator";
         if (cfg.FfbTranslate) yield return "--ffb-translate";
+        if (!cfg.HideLocalG25) yield return "--no-hide-g25";
         if (!cfg.ForwardButtons) yield return "--no-buttons";
         if (!cfg.ForwardHat) yield return "--no-hat";
+    }
+
+    // If the worker was killed rather than exiting cleanly, its HidHide cloak
+    // may still be in place. A no-op when the worker already reverted.
+    private void RevertHidHide(string exe)
+    {
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo(exe, "hidhide-revert")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = AppContext.BaseDirectory,
+            });
+            p?.WaitForExit(20_000);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "hidhide-revert failed");
+        }
     }
 
     private void OnLine(string? line, bool isError = false)
@@ -152,6 +174,7 @@ sealed partial class BridgeWorker(BridgeStatus status, ILogger<BridgeWorker> log
         public bool InvertClutch { get; init; }
         public bool InvertAccelerator { get; init; }
         public bool FfbTranslate { get; init; }
+        public bool HideLocalG25 { get; init; } = true;
         public bool ForwardButtons { get; init; } = true;
         public bool ForwardHat { get; init; } = true;
 
