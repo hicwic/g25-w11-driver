@@ -43,7 +43,10 @@ static partial class Libg25
     private static partial int g25_cmd_set_range(int degrees, Span<byte> out8);
 
     [LibraryImport(Dll, EntryPoint = "g25_ffb_translate")]
-    private static partial int g25_ffb_translate(ReadOnlySpan<byte> input, int inLen, Span<byte> output, int outCap);
+    private static partial int g25_ffb_translate(int mode, ReadOnlySpan<byte> input, int inLen, Span<byte> output, int outCap);
+
+    /// <summary>0 = passthrough, 1 = normalise GFN's G29 constant-force report to lg4ff form.</summary>
+    public enum FfbMode { Passthrough = 0, Translate = 1 }
 
     [LibraryImport(Dll, EntryPoint = "g25_libg25_version", StringMarshalling = StringMarshalling.Utf8)]
     public static partial string Version();
@@ -65,12 +68,12 @@ static partial class Libg25
 
     /// <summary>
     /// Translate one output report the virtual G29 received into 0..N eight-byte
-    /// G25 output reports. Phase 1: passthrough.
+    /// G25 output reports.
     /// </summary>
-    public static List<byte[]> FfbTranslate(ReadOnlySpan<byte> virtualG29Report)
+    public static List<byte[]> FfbTranslate(ReadOnlySpan<byte> virtualG29Report, FfbMode mode)
     {
         var buf = new byte[8 * 4];
-        var n = g25_ffb_translate(virtualG29Report, virtualG29Report.Length, buf, 4);
+        var n = g25_ffb_translate((int)mode, virtualG29Report, virtualG29Report.Length, buf, 4);
         var result = new List<byte[]>(Math.Max(0, n));
         for (var i = 0; i < n; i++)
             result.Add(buf.AsSpan(i * 8, 8).ToArray());

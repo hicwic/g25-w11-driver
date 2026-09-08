@@ -29,37 +29,44 @@ produce, so those pass through unchanged. `13` (stop slot 1) is also valid G25.
 - Damper: `{0x41, 0x0c, coeff4(kl), kl<0, coeff4(kr), kr<0, clip>>8}` on slot 3.
 - Stop slot n: `{(1u << (n+4)) | 0x03, 0, ...}` (slot 0 = 0x13, slot 1 = 0x23...).
 
-## Why passthrough already "feels right"
+## Cross-check with `hid-lg4ff.c`
 
-GFN's format is Logitech-classic-shaped: same slot bytes (`0x11` / `0x21`),
-same `F3` / `F5`. Constant force dominates (90% of reports) and the G25 clearly
-reacts to `11 08 XX 80` as sent. The likely errors are subtle:
+The Linux driver (`berarma/new-lg4ff`, rev `2092db1`) uses **one** command
+format for G25 / G27 / G29 - it does **not** branch on model for FFB bytes
+(only `set_range` and LED init differ). `lg4ff_update_slot`:
 
-1. **Constant force type byte.** GFN sends `0x08` where the G25 driver uses
-   `0x00`. If `0x08` selects a different level scaling on the G25 the magnitude
-   is slightly off; if the G25 ignores unknown types some forces are dropped.
-   Hypothesis: `11 08 XX 80` -> `11 00 XX 00 00 00 00` (keep the level byte).
-2. **Condition effects.** `21 0C` on slot 2 with symmetric small coefficients
-   and no deadband reads as a **damper**, but the G25's damper is `0x41 0x0c`
-   on slot 3. Passthrough leaves it as `21 0C` (slot 2, wrong type) - probably
-   why centring / understeer feel is off. Hypothesis: decode `0N` as a
-   coefficient (`k ~= 0N << 11`) and emit `g25::damper(k, k, clip)`.
-3. **Direction / sign.** Not verified either way.
+```c
+cmd[0] = (0x10 << slot_id) | cmd_op;         // op 0x01 = download-and-play, 0x03 = stop
+// constant force:
+cmd[1] = 0x00;
+cmd[2 + slot_id] = (clamp_s16(level) + 0x8000) >> 8;
+// spring:  cmd[1] = 0x0b; ...
+// damper:  cmd[1] = 0x0c; cmd[2]=coeff_l cmd[3]=sign_l cmd[4]=coeff_r cmd[5]=sign_r cmd[6]=clip
+// autocenter on  = { 0x14, 0, ... }   off = { 0xf5, 0, ... }
+// stop all       = { 0xf3, 0, ... }
+```
+
+So, comparing to the GFN capture:
+
+| GFN sends | lg4ff form | verdict |
+| --- | --- | --- |
+| `F3`, `F5`, `13` | `0xf3`, `0xf5`, `0x13` | identical - passthrough |
+| `14 00` | autocenter **on** | identical - passthrough (it *is* a command, not keepalive) |
+| `21 0C 0N 00 0N 00 01` | damper, slot 1, `coeff/sign/coeff/sign/clip` | **already correct** - passthrough |
+| `11 08 XX 80` | constant force wants `cmd[1]=0x00`, `cmd[3..]=0` | **only real deviation** |
 
 ## The translation (`g25_ffb_translate`, mode 1)
 
-`libg25` gains a translating path, off by default (`bridge --ffb-translate`):
+Given the above, `mode 1` does exactly one thing: normalise the constant-force
+report.
 
 | GFN | -> G25 |
 | --- | --- |
-| `11 08 XX ..` | `constant_force`-shaped: `11 00 XX 00 00 00 00` |
-| `21 0C 0N 00 0N 00 ..` | `damper(N<<11, N<<11, 0xFFFF)` -> `41 0C ...` |
-| `23 0C ..` | `stop_force_slot(2)` -> `43 00 ...` |
-| `13`, `14`, `FE 0D` | passthrough (init / keepalive) |
-| `F3`, `F5` | passthrough (identical) |
+| `X1 08 .. ` / `X1 00 ..` (download-and-play, constant) | `cmd[1]=0x00`, force byte kept at `cmd[2 + slot]`, rest zero |
+| everything else | passthrough (already lg4ff form) |
 
-These mappings are **hypotheses**. They need the A/B test below before becoming
-the default.
+Off by default (`bridge --ffb-translate`, or `ffbTranslate` in the service
+config) until the A/B feel test confirms it is at least as good as passthrough.
 
 ## A/B capture plan (hardware)
 

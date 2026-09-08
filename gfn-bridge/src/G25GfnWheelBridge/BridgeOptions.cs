@@ -24,6 +24,8 @@ sealed record BridgeOptions
     public bool InvertClutch { get; set; }
     public bool TraceOutput { get; set; }
     public bool RelayForceFeedback { get; set; } = true;
+    // Normalise GeForce NOW FFB reports to lg4ff form. Default off = raw passthrough.
+    public bool FfbTranslate { get; set; }
     public bool KeepExisting { get; set; }
     // Sent to the G25 at startup so it is usable without G HUB. 0 = don't set range.
     public int WheelRangeDegrees { get; set; } = 900;

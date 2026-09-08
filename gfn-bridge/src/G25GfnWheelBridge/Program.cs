@@ -64,6 +64,7 @@ static class Program
         Console.WriteLine("  --invert-clutch         Invert clutch axis");
         Console.WriteLine("  --trace-output          Print host output/feature reports sent to the virtual G29");
         Console.WriteLine("  --no-ffb                Do not relay G29 force-feedback commands to the G25");
+        Console.WriteLine("  --ffb-translate         Normalise GFN FFB reports to lg4ff form (default: passthrough)");
         Console.WriteLine();
         Console.WriteLine("First-run setup (Administrator):");
         Console.WriteLine("  powershell -ExecutionPolicy Bypass -File scripts\\Run-Bridge-Admin.ps1 -BridgeArgs '--install-driver'");
@@ -219,7 +220,7 @@ static class Program
         // Open the source only after the virtual controller has settled so the
         // DirectInput handle does not become stale during startup.
         using var source = G25Source.Open(TimeSpan.FromSeconds(15));
-        using var forceFeedback = options.RelayForceFeedback ? G25ForceFeedbackRelay.Open() : null;
+        using var forceFeedback = options.RelayForceFeedback ? G25ForceFeedbackRelay.Open(options.FfbTranslate ? Libg25.FfbMode.Translate : Libg25.FfbMode.Passthrough) : null;
         forceFeedback?.SendWheelInit(options.WheelRangeDegrees);
 
         if (forceFeedback != null || options.TraceOutput)
@@ -388,6 +389,7 @@ static class Program
                 case "--invert-clutch": options.InvertClutch = true; break;
                 case "--trace-output": options.TraceOutput = true; break;
                 case "--no-ffb": options.RelayForceFeedback = false; break;
+                case "--ffb-translate": options.FfbTranslate = true; break;
                 case "--keep-existing": options.KeepExisting = true; break;
                 case "--wheel-range":
                     if (!int.TryParse(RequireValue(args, ref i, "--wheel-range"), out var deg)) throw new ArgumentException("--wheel-range must be an integer (40-900, or 0 to skip)");

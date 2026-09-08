@@ -74,24 +74,26 @@ g25::Command passthrough(std::span<const std::uint8_t> payload) {
     return command;
 }
 
-// GeForce NOW's G29 report -> G25 classic command. Hypotheses; see
-// docs/ffb-protocol.md. Falls back to passthrough for anything not recognised
-// (init, keepalive, F3/F5 which are already identical).
+// GeForce NOW's G29 report -> G25 classic command.
+//
+// hid-lg4ff.c uses ONE format for G25/G27/G29: cmd[0] = (0x10 << slot) | op,
+// cmd[1] = effect type (0x00 constant, 0x0b spring, 0x0c damper, 0x0e friction),
+// force at cmd[2 + slot] as (clamp_s16(level) + 0x8000) >> 8. F3/F5/13/14 and
+// the 0x21 0x0c condition GFN sends are already in that format, so they pass
+// through unchanged.
+//
+// The one deviation observed: GFN's constant-force report is
+//   11 08 <level> 80 00 00 00
+// where lg4ff would send   11 00 <level> 00 00 00 00 . Normalise it.
 g25::Command translate(std::span<const std::uint8_t> p) {
-    const auto b0 = p[0];
-    const auto b1 = p.size() > 1 ? p[1] : std::uint8_t{0};
-
-    if (b0 == 0x11 && b1 == 0x08 && p.size() >= 3) {
-        // Constant force, slot 1: keep the level byte, use the G25 type 0x00.
-        return {0x11, 0x00, p[2], 0, 0, 0, 0};
-    }
-    if (b0 == 0x21 && b1 == 0x0C && p.size() >= 6) {
-        // Condition on slot 2 (symmetric, no deadband) -> G25 damper (slot 3).
-        // Layout matches g25::damper: {0x41,0x0c, coeff_l, sign_l, coeff_r, sign_r, clip>>8}.
-        return {0x41, 0x0C, p[2], 0, p[4], 0, 0xFF};
-    }
-    if (b0 == 0x23 && b1 == 0x0C) {
-        return g25::stop_force_slot(2);
+    const bool download = (p[0] & 0x0F) == 0x01;           // op 1 = download-and-play
+    const bool constant_type = p.size() > 1 && (p[1] == 0x00 || p[1] == 0x08);
+    if (download && constant_type && p.size() >= 3) {
+        const std::uint8_t slot = (p[0] >> 4) & 0x0F;      // 1,2,4,8 -> byte 2..5
+        const std::uint8_t idx = slot == 0x02 ? 3 : slot == 0x04 ? 4 : slot == 0x08 ? 5 : 2;
+        g25::Command cmd{p[0], 0x00, 0, 0, 0, 0, 0};
+        cmd[idx] = p[2];
+        return cmd;
     }
     return passthrough(p);
 }

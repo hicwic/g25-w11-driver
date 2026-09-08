@@ -37,12 +37,15 @@ sealed class G25ForceFeedbackRelay : IDisposable
     }
     private long _lastReported;
 
-    private G25ForceFeedbackRelay(HidStream stream, string productName)
+    private readonly Libg25.FfbMode _ffbMode;
+
+    private G25ForceFeedbackRelay(HidStream stream, string productName, Libg25.FfbMode ffbMode)
     {
         _stream = stream;
+        _ffbMode = ffbMode;
         _writer = new Thread(WriteLoop) { IsBackground = true, Name = "G25 force-feedback relay" };
         _writer.Start();
-        Console.WriteLine($"Force feedback output opened: {productName}");
+        Console.WriteLine($"Force feedback output opened: {productName} (mode: {ffbMode})");
     }
 
     /// <summary>
@@ -79,7 +82,7 @@ sealed class G25ForceFeedbackRelay : IDisposable
         return null;
     }
 
-    public static G25ForceFeedbackRelay Open()
+    public static G25ForceFeedbackRelay Open(Libg25.FfbMode ffbMode)
     {
         var stream = TryAcquireStream();
         if (stream == null)
@@ -89,7 +92,7 @@ sealed class G25ForceFeedbackRelay : IDisposable
         string name;
         try { name = stream.Device.GetProductName(); }
         catch { name = "Logitech G25"; }
-        return new G25ForceFeedbackRelay(stream, name);
+        return new G25ForceFeedbackRelay(stream, name, ffbMode);
     }
 
     private bool Reconnect()
@@ -116,7 +119,7 @@ sealed class G25ForceFeedbackRelay : IDisposable
         if (_failure != null || rawG29Report.Length < 1) return;
 
         Interlocked.Increment(ref _received);
-        foreach (var report in Libg25.FfbTranslate(rawG29Report))
+        foreach (var report in Libg25.FfbTranslate(rawG29Report, _ffbMode))
             if (!_commands.TryAdd(report)) Interlocked.Increment(ref _dropped);
     }
 

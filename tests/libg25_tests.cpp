@@ -65,14 +65,15 @@ void run() {
     check(g25_ffb_translate(0, nullptr, 8, ffb.data(), 1) == -1, "null in rejected");
     check(g25_ffb_translate(0, cf.data(), 8, ffb.data(), 0) == -1, "zero capacity rejected");
 
-    // FFB - translate (mode 1).
+    // FFB - translate (mode 1): only the constant-force report is normalised.
     check(g25_ffb_translate(1, cf.data(), 8, ffb.data(), 1) == 1, "translate constant force");
-    check((ffb == std::array<std::uint8_t, 8>{0, 0x11, 0x00, 0x1b, 0, 0, 0, 0}), "constant force type 0x08 -> 0x00, level kept");
+    check((ffb == std::array<std::uint8_t, 8>{0, 0x11, 0x00, 0x1b, 0, 0, 0, 0}), "11 08 XX 80 -> 11 00 XX 00 (lg4ff form)");
+    // The 0x21 0x0c condition is already lg4ff-format (slot 1 damper) - untouched.
     const std::array<std::uint8_t, 7> cond{0x21, 0x0c, 0x0c, 0x00, 0x0c, 0x00, 0x01};
     check(g25_ffb_translate(1, cond.data(), 7, ffb.data(), 1) == 1, "translate condition");
-    check(ffb[1] == 0x41 && ffb[2] == 0x0c && ffb[3] == 0x0c && ffb[5] == 0x0c, "condition slot2 -> G25 damper slot3");
+    check((ffb == std::array<std::uint8_t, 8>{0, 0x21, 0x0c, 0x0c, 0x00, 0x0c, 0x00, 0x01}), "condition passes through unchanged");
     check(g25_ffb_translate(1, stop_all_cmd.data(), 7, ffb.data(), 1) == 1, "translate stop-all");
-    check(ffb[1] == 0xf3, "stop-all still passes through in translate mode");
+    check(ffb[1] == 0xf3, "stop-all passes through in translate mode");
 
     check(std::strlen(g25_libg25_version()) > 0, "version string");
 }

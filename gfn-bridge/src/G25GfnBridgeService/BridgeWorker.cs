@@ -115,6 +115,7 @@ sealed partial class BridgeWorker(BridgeStatus status, ILogger<BridgeWorker> log
         if (cfg.InvertBrake) yield return "--invert-brake";
         if (cfg.InvertClutch) yield return "--invert-clutch";
         if (cfg.InvertAccelerator) yield return "--invert-accelerator";
+        if (cfg.FfbTranslate) yield return "--ffb-translate";
         if (!cfg.ForwardButtons) yield return "--no-buttons";
         if (!cfg.ForwardHat) yield return "--no-hat";
     }
@@ -150,6 +151,7 @@ sealed partial class BridgeWorker(BridgeStatus status, ILogger<BridgeWorker> log
         public bool InvertBrake { get; init; }
         public bool InvertClutch { get; init; }
         public bool InvertAccelerator { get; init; }
+        public bool FfbTranslate { get; init; }
         public bool ForwardButtons { get; init; } = true;
         public bool ForwardHat { get; init; } = true;
 
