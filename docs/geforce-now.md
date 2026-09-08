@@ -159,9 +159,46 @@ Test procedure:
 4. Check: does the virtual G29 still get detected? Does it still receive output
    reports (`--trace-output`)? Does steering still work?
 
-Result: _to be filled in after testing._
+### Result (2026-09-08): G HUB is a hard dependency
 
-Reinstall path if needed: download G HUB from
+Tested with G HUB fully uninstalled, rebooted, bridge running with
+`--trace-output`, GeForce NOW + Wreckfest:
+
+| | With G HUB (v3/v4) | Without G HUB |
+| --- | --- | --- |
+| Wheel visible in the streamed game | yes | **yes** |
+| Steering reaches the remote game | not confirmed | **no** |
+| Output reports to the virtual G29 (`OUT ...`) | many | **zero** |
+| Force feedback | (init chatter only) | **none** |
+
+The bridge itself was healthy without G HUB: it read the physical G25 (wheel
+values ranged 0.10-0.73 while turning), created the virtual G29, and DirectInput
+enumerated it (`G29 Driving Force Racing Wheel`, product `c24f:046d`). The
+device is detected, but inert.
+
+Conclusions:
+
+- **The `OUT` reports captured in v3/v4 were G HUB initialising the virtual G29**
+  (`0xF3` stop forces, `0xF5` disable autocenter, repeating `0xFE 0x0D` / `0x14`
+  keepalive) - classic G HUB device bring-up, not game force feedback. With
+  G HUB gone, nothing writes to the device.
+- GeForce NOW's Logitech-wheel input and FFB path runs **through G HUB**. A bare
+  HIDMaestro G29 that G HUB is not managing gets enumerated (name shows up) but
+  GFN neither forwards its input nor sends it FFB. This matches NVIDIA's stated
+  requirement that G HUB must be running.
+- Still not established, even with G HUB: whether the *remote* game actually
+  receives steering. The v3/v4 logs only recorded the bridge's local read and
+  the G HUB init writes. Next test must confirm remote input with G HUB
+  reinstalled.
+
+Implication for `gfn-bridge-plugin.md`: the optional component's prerequisites
+are HIDMaestro **and** G HUB (running). The FFB translation work in the bridge's
+`docs/ffb-protocol.md` needs a fresh capture that separates G HUB init chatter
+from actual in-game forces.
+
+Evidence: `tools/ghub-uninstall/bridge-trace-no-ghub.txt`.
+
+Reinstall path: download G HUB from
 `https://www.logitechg.com/software/g-hub`.
 
 ## Additional references for virtual HID research
