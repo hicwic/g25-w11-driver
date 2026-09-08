@@ -67,9 +67,9 @@ Filename: "powershell.exe"; \
   Flags: runhidden waituntilterminated runasoriginaluser
 
 [UninstallRun]
-Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Register-G29FF.ps1"" -Action Uninstall"; \
-  Flags: runhidden waituntilterminated runasoriginaluser; RunOnceId: "UnregG29FF"
+; Note: the per-user C24F OEM key stays (uninstall is elevated, can't touch the
+; user's HKCU). It is inert once the virtual G29 is gone; run
+; Register-G29FF.ps1 -Action Uninstall as the user to remove it.
 Filename: "{app}\g25vg29.exe"; Parameters: "uninstall"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveService"
 Filename: "{app}\g25-virtual-g29.exe"; Parameters: "cleanup"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveVirtualG29"
 

@@ -156,6 +156,13 @@ The bridge holds the virtual G29 for ~15 s in case it is a USB glitch
 (tray shows `G29 mode - G25 disconnected`), then stops the service and removes
 the virtual wheel. Re-plug the G25 and toggle G29 mode back on.
 
+### Removing the virtual-G29 OEM registration
+
+Uninstalling the bridge leaves the per-user `046D:C24F` OEM key in place (the
+uninstaller is elevated and can't touch your `HKCU`). It is inert once the
+virtual G29 is gone. To remove it, run `scripts\Register-G29FF.ps1 -Action
+Uninstall` as your user before uninstalling.
+
 ### A local game sees the virtual G29 but there is no force feedback
 
 Local FFB routes through `g25ff.dll` from the **core g25-driver** - install it
