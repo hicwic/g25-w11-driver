@@ -22,6 +22,7 @@ static class Program
             {
                 "inspect" => Inspect(),
                 "probe-virtual" => ProbeVirtual(rest),
+                "latency" => LatencyCmd(rest),
                 "dry-run" => DryRun(ParseOptions(rest)),
                 "bridge" => Bridge(ParseOptions(rest)),
                 "install-driver" => InstallDriverOnly(),
@@ -45,6 +46,7 @@ static class Program
         Console.WriteLine("Commands:");
         Console.WriteLine("  inspect                 Read-only: list DirectInput and HIDMaestro/G29 devices");
         Console.WriteLine("  dry-run [options]       Read-only: print normalized G25 axes, no virtual device");
+        Console.WriteLine("  latency [--seconds N]   Measure report rate + G25->G29 latency (needs G29 mode on)");
         Console.WriteLine("  bridge [options]        Create a virtual Logitech G29 and feed it from the G25");
         Console.WriteLine("  install-driver          Install/refresh the HIDMaestro driver, then exit");
         Console.WriteLine("  cleanup                 Remove HIDMaestro virtual devices");
@@ -261,6 +263,15 @@ static class Program
         HidHide.RevertLeftoverState();
         Console.WriteLine("Cleanup done.");
         return 0;
+    }
+
+    static int LatencyCmd(string[] args)
+    {
+        var seconds = 20;
+        for (var i = 0; i < args.Length - 1; i++)
+            if (args[i] is "--seconds" or "-s" && int.TryParse(args[i + 1], out var n))
+                seconds = Math.Clamp(n, 5, 120);
+        return Latency.Measure(seconds);
     }
 
     // Undo a HidHide cloak a bridge worker left behind after a hard kill. The
