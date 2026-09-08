@@ -2,6 +2,7 @@
 #include "device/g25_device.h"
 #include "settings/user_settings.h"
 #include "protocol/logitech_protocol.h"
+#include "tray/virtual_g29.h"
 #include "tray/resource.h"
 
 #include <algorithm>
@@ -15,6 +16,7 @@ constexpr UINT timer_id = 1;
 constexpr UINT icon_id = 1;
 constexpr UINT cmd_rotation_base = 100;
 constexpr UINT cmd_exit = 301;
+constexpr UINT cmd_vg29_toggle = 302;
 constexpr int rotations[]{180, 360, 540, 900};
 UINT taskbar_created{};
 NOTIFYICONDATAW icon{};
@@ -46,7 +48,12 @@ ApplyResult apply_to_wheel() {
             return info.vid == logitech_vid && identify_model(info.pid, info.revision) == Model::g25;
         });
         if (found == devices.end()) {
-            status = L"G25 not connected";
+            // While G29 mode is on, the bridge hides the physical G25 from other
+            // processes (HidHide), so not seeing it here is expected, not a fault.
+            const bool vg29_running = vg29::presence() == vg29::Presence::installed &&
+                (vg29::status().run == vg29::RunState::running ||
+                 vg29::status().run == vg29::RunState::starting);
+            status = vg29_running ? L"G29 mode active (G25 hidden)" : L"G25 not connected";
             applied_path.clear();
             pending_path.clear();
             applied_rotation = 0;
@@ -101,6 +108,15 @@ void show_menu(HWND window) {
     HMENU menu = CreatePopupMenu();
     HMENU rotation_menu = CreatePopupMenu();
     AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, status.c_str());
+
+    const bool vg29_installed = vg29::presence() == vg29::Presence::installed;
+    bool vg29_on = false;
+    if (vg29_installed) {
+        const auto vg29_status = vg29::status();
+        vg29_on = vg29_status.run == vg29::RunState::running ||
+                  vg29_status.run == vg29::RunState::starting;
+    }
+
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     for (UINT i = 0; i < std::size(rotations); ++i) {
         const auto text = std::to_wstring(rotations[i]) + L" deg";
@@ -108,6 +124,10 @@ void show_menu(HWND window) {
                     cmd_rotation_base + i, text.c_str());
     }
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(rotation_menu), L"Maximum rotation");
+
+    if (vg29_installed)
+        AppendMenuW(menu, MF_STRING | (vg29_on ? MF_CHECKED : 0), cmd_vg29_toggle, L"G29 Mode");
+
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, cmd_exit, L"Exit");
     POINT point{};
@@ -147,6 +167,15 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             pending_path = applied_path;
             (void)write_user_settings(settings);
             apply_or_retry(window);
+        } else if (command == cmd_vg29_toggle) {
+            const auto st = vg29::status();
+            if (st.run == vg29::RunState::running || st.run == vg29::RunState::starting)
+                vg29::stop();
+            else
+                vg29::start();
+            // The wheel comes and goes as the bridge cloaks/uncloaks it; refresh
+            // the status line even if no device broadcast arrives.
+            SetTimer(window, timer_id, 2000, nullptr);
         } else if (command == cmd_exit) {
             DestroyWindow(window);
         }

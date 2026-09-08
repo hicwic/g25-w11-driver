@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(g25_userspace VERSION 0.1.3 LANGUAGES CXX)
+project(g25_userspace VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -51,13 +51,26 @@ if(G25_BUILD_TRAY)
   if(NOT G25_BUILD_TOOL)
     message(FATAL_ERROR "g25tray currently requires G25_BUILD_TOOL")
   endif()
+  add_library(g25_virtual_g29 src/tray/virtual_g29.cpp)
+  target_include_directories(g25_virtual_g29 PUBLIC src)
+  target_compile_definitions(g25_virtual_g29 PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00)
+  target_link_libraries(g25_virtual_g29 PUBLIC advapi32 PRIVATE g25_warnings)
+
   add_executable(g25tray WIN32 src/tray/main.cpp src/tray/g25tray.rc)
   target_compile_definitions(g25tray PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00)
-  target_link_libraries(g25tray PRIVATE g25_windows g25_settings shell32 g25_warnings)
+  target_link_libraries(g25tray PRIVATE g25_windows g25_settings g25_virtual_g29 shell32 g25_warnings)
   if(MINGW)
     target_link_options(g25tray PRIVATE -static)
   endif()
   install(TARGETS g25tray RUNTIME DESTINATION bin)
+
+  # Manual probe (not a ctest): drives the g25vg29 service from an
+  # unprivileged process to check the SDDL and status pipe.
+  add_executable(virtual_g29_probe tests/virtual_g29_probe.cpp)
+  target_link_libraries(virtual_g29_probe PRIVATE g25_virtual_g29 g25_warnings)
+  if(MINGW)
+    target_link_options(virtual_g29_probe PRIVATE -static)
+  endif()
 endif()
 
 add_library(g25_protocol
@@ -66,6 +79,19 @@ add_library(g25_protocol
   src/device/output_session.cpp)
 target_include_directories(g25_protocol PUBLIC src)
 target_link_libraries(g25_protocol PRIVATE g25_warnings)
+
+# C-ABI shared library over g25_protocol, for the .NET Virtual G29 bridge.
+option(G25_BUILD_LIBG25 "Build libg25.dll (C ABI over the protocol library)" ${WIN32})
+if(G25_BUILD_LIBG25)
+  add_library(g25_libg25 SHARED src/libg25/libg25.cpp)
+  target_link_libraries(g25_libg25 PRIVATE g25_protocol g25_warnings)
+  target_compile_definitions(g25_libg25 PRIVATE LIBG25_BUILD)
+  set_target_properties(g25_libg25 PROPERTIES PREFIX "" OUTPUT_NAME "libg25")
+  if(MINGW)
+    target_link_options(g25_libg25 PRIVATE -static)
+  endif()
+  install(TARGETS g25_libg25 RUNTIME DESTINATION bin LIBRARY DESTINATION bin)
+endif()
 
 if(G25_BUILD_TOOL)
   if(NOT WIN32)
@@ -102,6 +128,16 @@ if(BUILD_TESTING)
     target_link_options(protocol_tests PRIVATE -static)
   endif()
   add_test(NAME protocol_and_safety COMMAND protocol_tests)
+  add_executable(libg25_tests tests/libg25_tests.cpp src/libg25/libg25.cpp)
+  target_link_libraries(libg25_tests PRIVATE g25_protocol g25_warnings)
+  target_include_directories(libg25_tests PRIVATE src)
+  # Compile the wrapper in "building the DLL" mode so the __declspec in the
+  # header matches the definitions in this same binary (harmless off-Windows).
+  target_compile_definitions(libg25_tests PRIVATE LIBG25_BUILD)
+  if(MINGW)
+    target_link_options(libg25_tests PRIVATE -static)
+  endif()
+  add_test(NAME libg25_c_abi COMMAND libg25_tests)
   if(G25_BUILD_TOOL)
     add_executable(windows_tests tests/windows_tests.cpp)
     target_link_libraries(windows_tests PRIVATE g25_windows g25_settings g25_warnings)

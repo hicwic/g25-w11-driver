@@ -6,3 +6,17 @@
 /CMakeUserPresets.json
 *.user
 *.log
+
+# Superseded proof of concept, replaced by virtual-g29/
+/tools/gfn-g25-bridge-poc/
+# Runtime output of tools/ghub-uninstall/uninstall-ghub.ps1
+/tools/ghub-uninstall/*.transcript.txt
+
+# Virtual G29 bridge (.NET) build output and local test artifacts
+/virtual-g29/**/bin/
+/virtual-g29/**/obj/
+/virtual-g29/dist/
+/virtual-g29/artifacts/
+# Bundled third-party setup binaries are fetched, not committed (see
+# virtual-g29/third_party/HidHide/*/README.md)
+/virtual-g29/third_party/**/*.exe
