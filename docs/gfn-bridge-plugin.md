@@ -1,6 +1,12 @@
 # GeForce NOW bridge - packaging plan
 
-Status: planning. Branch `feature/geforce-now-wheel-support`.
+Status: **all phases done and validated** (2026-09-08). Branch
+`feature/geforce-now-wheel-support`. Installed end to end from the real
+`g25-gfn-bridge-<ver>-setup.exe` (Dev Build artifact): HIDMaestro driver +
+`g25gfnbridge` service + tray toggle + steering & FFB in GeForce NOW.
+
+Left: archive the old standalone repo, drop `tools/gfn-g25-bridge-poc/`, open a
+PR to `main`, cut a `v*` release, and Phase 7 (local G29 emulation + HidHide).
 
 Background on *why* a bridge is needed: [geforce-now.md](geforce-now.md). How the
 GFN client actually works: [gfn-client-internals.md](gfn-client-internals.md).
