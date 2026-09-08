@@ -2,6 +2,11 @@
 
 This branch tracks the feasibility work for using a Logitech G25 with GeForce NOW.
 
+The working prototype now lives in the separate `g25-gfn-wheel-bridge` repo. How
+it would ship as an optional component of this driver is in
+[gfn-bridge-plugin.md](gfn-bridge-plugin.md). The `tools/gfn-g25-bridge-poc/`
+folder in this repo is a superseded proof of concept.
+
 ## Current evidence
 
 NVIDIA's public support article, updated 2026-05-15, says GeForce NOW supports a selected list of racing wheels with force feedback on the latest Windows native app. The Windows requirements are Windows 11 or newer and Logitech G HUB running in the background for Logitech wheels. The supported Logitech devices listed by NVIDIA are PRO Racing Wheel, RS50, G923, G920, G29, and the Driving Force Shifter. The Logitech G25 is not listed.
@@ -122,6 +127,42 @@ The first true-wheel prototype should use HIDMaestro with the `logitech-g29` pro
 5. If GeForce NOW writes FFB to the virtual G29, the bridge receives HID PID output packets and translates them to the real G25.
 
 The first pass can ignore force feedback and only prove detection plus steering/pedal input in GeForce NOW. If GeForce NOW detects the virtual G29, then FFB routing becomes the next milestone.
+
+## G HUB dependency test
+
+NVIDIA's requirements say Logitech wheels need "Logitech G HUB running in the
+background". We need to know whether the *bridge* actually depends on G HUB, or
+only on HIDMaestro.
+
+Baseline captured on the test machine 2026-09-08 before removing G HUB
+(`2026.5.939708`):
+
+- HIDMaestro installs its own drivers: `hidmaestro.inf` (HIDClass) and
+  `hidmaestro_xusb.inf` (System bus), signed `HIDMaestroTestCert`. It does not
+  use the Logitech virtual bus.
+- G HUB installs `logi_joy_bus_enum.inf`, `logi_joy_hid.inf`,
+  `logi_joy_vir_hid.inf` (WHQL) and runs `LGHUBUpdaterService` +
+  `lghub_updater.exe`, with an `HKCU\...\Run\LGHUB` entry.
+- With the bridge running, a phantom device
+  "Logitech G HUB G29 Driving Force Racing Wheel USB" appears, i.e. G HUB sees
+  and names the HIDMaestro virtual G29.
+- The last capture with output-report traffic (`usbip-test-v4`) happened with
+  G HUB installed.
+
+Full before/after inventories: `tools/ghub-uninstall/` in this repo.
+
+Test procedure:
+
+1. Uninstall G HUB and its residual services/drivers/folders.
+2. Reboot.
+3. Run the bridge, launch GeForce NOW + a racing game.
+4. Check: does the virtual G29 still get detected? Does it still receive output
+   reports (`--trace-output`)? Does steering still work?
+
+Result: _to be filled in after testing._
+
+Reinstall path if needed: download G HUB from
+`https://www.logitechg.com/software/g-hub`.
 
 ## Additional references for virtual HID research
 
