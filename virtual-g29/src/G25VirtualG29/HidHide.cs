@@ -88,6 +88,14 @@ static class HidHide
         var state = new State([.. paths], appPath, WeEnabledCloak: !wasCloaked);
         WriteState(state);
         Console.WriteLine($"HidHide: G25 hidden from local games ({paths.Count} node(s)); this bridge is whitelisted.");
+
+        // HidHide is a HIDClass upper filter. If it was installed without a
+        // reboot, it is registered for the class but not yet in the G25's live
+        // device stack, so the cloak has no effect. Restart the device nodes
+        // once to pull the filter in. Whitelisted, so we can still read the
+        // wheel afterwards (G25Source.Open retries for 15s).
+        EnsureFilterInStack(paths);
+
         return new Session(cli, state);
     }
 
@@ -109,6 +117,41 @@ static class HidHide
         Console.WriteLine("HidHide: reverting a cloak left by an earlier run.");
         Revert(cli, state);
         TryDeleteState();
+    }
+
+    // Instance IDs look like "HID\VID_..." or "USB\VID_..."; the "\\?\..."
+    // interface symbolic link cannot be restarted.
+    private static bool IsInstanceId(string p) =>
+        !p.StartsWith(@"\\", StringComparison.Ordinal) && p.Contains('\\');
+
+    private static void EnsureFilterInStack(IEnumerable<string> paths)
+    {
+        var instanceIds = paths.Where(IsInstanceId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            // Restart the parent USB node first; it rebuilds the HID child.
+            .OrderBy(p => p.StartsWith(@"USB\", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ToArray();
+        if (instanceIds.Length == 0) return;
+
+        // If any node already has the filter, assume the class filter is live.
+        foreach (var id in instanceIds)
+        {
+            var (code, stdout, _) = RunProcess("pnputil", "/enum-devices", "/instanceid", id, "/stack");
+            if (code == 0 && stdout.Contains("hidhide", StringComparison.OrdinalIgnoreCase))
+                return;
+        }
+
+        Console.WriteLine("HidHide: restarting the G25 so the filter attaches (one-time after a no-reboot install)...");
+        var restarted = false;
+        foreach (var id in instanceIds)
+        {
+            var (code, _, _) = RunProcess("pnputil", "/restart-device", id);
+            restarted |= code == 0;
+        }
+        if (restarted)
+            Thread.Sleep(2000);   // let the stack rebuild before G25Source.Open
+        else
+            Console.WriteLine("HidHide: could not restart the G25. If local games still see two wheels, reboot once - the filter then sticks.");
     }
 
     private static void Revert(string cli, State state)
@@ -214,7 +257,15 @@ static class HidHide
 
     private static (int code, string stdout, string stderr) RunCli(string cli, params string[] args)
     {
-        var psi = new ProcessStartInfo(cli)
+        var r = RunProcess(cli, args);
+        if (r.code != 0 && args.Length > 0 && args[0] != "--cloak-state")
+            Console.Error.WriteLine($"HidHide: `{args[0]}` exited {r.code}. {r.stderr.Trim()}");
+        return r;
+    }
+
+    private static (int code, string stdout, string stderr) RunProcess(string exe, params string[] args)
+    {
+        var psi = new ProcessStartInfo(exe)
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -226,21 +277,19 @@ static class HidHide
         try
         {
             using var p = Process.Start(psi);
-            if (p == null) return (-1, "", "could not start HidHideCLI");
+            if (p == null) return (-1, "", $"could not start {exe}");
             var so = p.StandardOutput.ReadToEnd();
             var se = p.StandardError.ReadToEnd();
-            if (!p.WaitForExit(15_000))
+            if (!p.WaitForExit(30_000))
             {
                 try { p.Kill(); } catch { }
-                return (-1, so, "HidHideCLI timed out");
+                return (-1, so, $"{exe} timed out");
             }
-            if (p.ExitCode != 0 && args.Length > 0 && args[0] != "--cloak-state")
-                Console.Error.WriteLine($"HidHide: `{args[0]}` exited {p.ExitCode}. {se.Trim()}");
             return (p.ExitCode, so, se);
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"HidHide: could not run {args.FirstOrDefault()}: {ex.Message}");
+            Console.Error.WriteLine($"HidHide: could not run {exe} {args.FirstOrDefault()}: {ex.Message}");
             return (-1, "", ex.Message);
         }
     }

@@ -142,6 +142,12 @@ from every process except a whitelist. `pnputil /disable-device` cannot be used
   (`%ProgramData%\g25vg29\hidhide-session.json`) lets the next start - or the
   service's `hidhide-revert` verb, or `cleanup` - undo a cloak left by a hard
   kill.
+- **Filter attach:** HidHide is a HIDClass upper filter; installed without a
+  reboot it is registered for the class but not in the G25's live device stack,
+  so the cloak does nothing until the wheel is re-enumerated. The worker forces
+  this once with `pnputil /restart-device` on the G25 nodes right after cloaking
+  (equivalent to a replug), then re-opens the wheel (it is whitelisted). If the
+  restart is refused it logs "reboot once" and carries on.
 - **Config:** `hideLocalG25` (default true) in `config.json`; `--no-hide-g25`
   on the worker. If HidHide is absent the bridge logs one line and runs without
   cloaking (GeForce NOW is unaffected regardless).
