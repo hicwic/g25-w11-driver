@@ -24,6 +24,7 @@ static class Program
                 "probe-virtual" => ProbeVirtual(rest),
                 "dry-run" => DryRun(ParseOptions(rest)),
                 "bridge" => Bridge(ParseOptions(rest)),
+                "install-driver" => InstallDriverOnly(),
                 "cleanup" => Cleanup(),
                 "help" or "--help" or "-h" => Help(),
                 _ => Fail($"Unknown command: {command}")
@@ -44,6 +45,7 @@ static class Program
         Console.WriteLine("  inspect                 Read-only: list DirectInput and HIDMaestro/G29 devices");
         Console.WriteLine("  dry-run [options]       Read-only: print normalized G25 axes, no virtual device");
         Console.WriteLine("  bridge [options]        Create a virtual Logitech G29 and feed it from the G25");
+        Console.WriteLine("  install-driver          Install/refresh the HIDMaestro driver, then exit");
         Console.WriteLine("  cleanup                 Remove HIDMaestro virtual devices");
         Console.WriteLine();
         Console.WriteLine("Bridge options:");
@@ -250,6 +252,18 @@ static class Program
         HMContext.RemoveAllVirtualControllers();
         PurgeStaleVirtualWheels(0x046D, 0xC24F);
         Console.WriteLine("Cleanup done.");
+        return 0;
+    }
+
+    // Install / refresh the HIDMaestro UMDF driver only - for the installer, so
+    // the first service start does not have to do it.
+    static int InstallDriverOnly()
+    {
+        if (!IsAdministrator()) return Fail("install-driver must run as Administrator.");
+        using var ctx = new HMContext();
+        Console.WriteLine("Installing or refreshing the HIDMaestro driver...");
+        ctx.InstallDriver();
+        Console.WriteLine("HIDMaestro driver installed.");
         return 0;
     }
 

@@ -134,25 +134,31 @@ Not in the initial scope because: it is unproven (does ACC/F1 actually behave
 better as a G29?) and HidHide is its own dependency + install. Ship GFN mode
 first; add this as a second checkbox once validated.
 
-### Phase 5 - installers
+### Phase 5 - installers (done, ISCC / real install still to run)
 - Core installer unchanged (`installer/g25-w11-driver.iss`, per-user).
-- New `installer/g25-gfn-bridge.iss` - **elevated** (`PrivilegesRequired=admin`):
-  drops `gfn-bridge/` payload + `libg25.dll`, installs the HIDMaestro driver,
-  creates + configures the service, its own uninstall (`sc delete`, remove
-  driver, `bridge cleanup`).
-- The core installer / tray offers "Install GeForce NOW bridge" which launches
-  `g25-gfn-bridge-<ver>-setup.exe`.
-- If G HUB is detected, the bridge installer warns and offers to run
-  `block-ghub-winusb.ps1` ([ghub-coexistence.md](ghub-coexistence.md)).
+  `Package-Release.ps1` copies named files only, so `libg25.dll` does not leak
+  into the core package.
+- New `installer/g25-gfn-bridge.iss` - **elevated** (`PrivilegesRequired=admin`),
+  own AppId, installs to `{autopf}\G25 GeForce NOW Bridge`:
+  - `[Files]` the `dotnet publish` payload (`G25_GFN_PAYLOAD_DIR`).
+  - `[Run]` `g25-gfn-wheel-bridge.exe install-driver` then `g25gfnbridge.exe
+    install`.
+  - `[UninstallRun]` `g25gfnbridge.exe uninstall` + `g25-gfn-wheel-bridge.exe
+    cleanup`.
+  - `[Code]` advises about G HUB if `{commonpf}\LGHUB` exists.
+- New bridge verb `install-driver` (install/refresh HIDMaestro, then exit).
+- The tray shows no GFN item until the service is registered (user's choice) -
+  discovery is via the release page / docs, not an in-tray installer link.
 
-### Phase 6 - CI/CD
-- `release.yml`: after the C++ build, `actions/setup-dotnet@v4` (10.x),
-  `dotnet publish -c Release -r win-x64` the bridge (self-contained), bundle
-  HIDMaestro + profiles + `libg25.dll`, run `ISCC` on the second `.iss`, attach
-  `g25-gfn-bridge-<ver>-setup.exe` to the release.
-- `ci.yml` / `dev.yml`: add `dotnet build` + `dotnet test` for the bridge.
+### Phase 6 - CI/CD (done, needs a run)
+- `release.yml`: `actions/setup-dotnet@v4` (10.x); after the C++ build, publish
+  the bridge + service self-contained into `dist/gfn-bridge` (with
+  `-p:Libg25Dll=dist/stage-x64/bin/libg25.dll`), `ISCC` both `.iss` files,
+  attach `g25-gfn-bridge-<ver>-setup.exe` to the release.
+- `ci.yml`: x64 job also `dotnet build`s the bridge + service against the
+  freshly built `libg25.dll`.
 - One `G25_VERSION` drives both installers.
-- Unsigned for now - note SmartScreen; a signing cert is out of scope.
+- Unsigned - SmartScreen prompts; a signing cert is out of scope.
 
 ## Open questions
 
