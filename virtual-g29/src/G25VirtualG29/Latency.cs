@@ -115,10 +115,20 @@ static class Latency
         if (all.Count >= 3)
         {
             all.Sort();
-            Console.WriteLine($"  per-edge   n={all.Count,3}   median {Pct(all, 50),4:0.0} ms   "
-                              + $"p10 {Pct(all, 10),4:0.0}   p90 {Pct(all, 90),4:0.0} ms"
+            Console.WriteLine($"  per-edge   n={all.Count,3}   median {Pct(all, 50),4:0.0} ms   mean {all.Average(),4:0.0}   "
+                              + $"p10 {Pct(all, 10),4:0.0}   p90 {Pct(all, 90),4:0.0}   p99 {Pct(all, 99),4:0.0} ms"
                               + (totalDropped > 0 ? $"   ({totalDropped} unmatched)" : ""));
             Console.WriteLine($"             from: {string.Join(", ", usedChannels)}");
+            Console.WriteLine();
+            Console.WriteLine("  distribution");
+            var edges = new[] { double.NegativeInfinity, 1, 2, 4, 8, 16, double.PositiveInfinity };
+            var labels = new[] { "  <1 ms", " 1-2 ms", " 2-4 ms", " 4-8 ms", "8-16 ms", " >16 ms" };
+            for (var i = 0; i < labels.Length; i++)
+            {
+                var c = all.Count(x => x > edges[i] && x <= edges[i + 1]);
+                var pct = 100.0 * c / all.Count;
+                Console.WriteLine($"    {labels[i]}  {pct,5:0.0}%  {new string('#', (int)Math.Round(pct / 2.5))} ({c})");
+            }
         }
         else
         {
