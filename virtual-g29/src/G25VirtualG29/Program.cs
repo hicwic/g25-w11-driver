@@ -229,6 +229,7 @@ static class Program
         // DirectInput handle does not become stale during startup.
         using var source = G25Source.Open(TimeSpan.FromSeconds(15));
         using var forceFeedback = options.RelayForceFeedback ? G25ForceFeedbackRelay.Open(options.FfbTranslate ? Libg25.FfbMode.Translate : Libg25.FfbMode.Passthrough) : null;
+        Console.WriteLine($"Wheel range: {options.WheelRangeDegrees} deg");
         forceFeedback?.SendWheelInit(options.WheelRangeDegrees);
 
         if (forceFeedback != null || options.TraceOutput)

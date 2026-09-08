@@ -39,12 +39,14 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-WelcomeLabel2=This installs the optional Virtual G29 wheel bridge.%n%nIt adds the HIDMaestro virtual HID driver (UMDF, self-signed test certificate), the HidHide device-hiding driver, and an on-demand Windows service. The core G25 driver is not changed. Enable the bridge from the G25 Control tray menu once installed.%n%nHidHide may ask for a reboot; the bridge works fully after it.
+WelcomeLabel2=This installs the optional Virtual G29 wheel bridge.%n%nIt adds the HIDMaestro virtual HID driver (UMDF, self-signed test certificate), the HidHide device-hiding driver, and an on-demand Windows service. The core G25 driver is not changed. Enable the bridge from the G25 Control tray menu once installed.%n%nGeForce NOW works on its own. Force feedback in local games also needs the core g25-driver installed.%n%nHidHide may ask for a reboot; the bridge works fully after it.
 
 [Files]
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Excludes: "{#HidHideSetup}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Bundled but not kept on disk - only used to install HidHide during setup.
 Source: "{#PayloadDir}\{#HidHideSetup}"; DestDir: "{tmp}"; Flags: deleteafterinstall
+; Per-user OEM / force-feedback registration for the virtual G29 (local games).
+Source: "..\virtual-g29\scripts\Register-G29FF.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Run]
 ; Hide the physical G25 from local DirectInput games (does nothing to GeForce NOW).
@@ -57,8 +59,17 @@ Filename: "{app}\g25-virtual-g29.exe"; Parameters: "install-driver"; \
 ; Register the on-demand service (SDDL lets the tray start/stop it).
 Filename: "{app}\g25vg29.exe"; Parameters: "install"; \
   StatusMsg: "Registering the Virtual G29 bridge service..."; Flags: runhidden waituntilterminated
+; Per-user OEM / FFB metadata for the virtual G29 (no-op if the core driver is
+; absent - GeForce NOW does not need it).
+Filename: "powershell.exe"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Register-G29FF.ps1"" -Action Install"; \
+  StatusMsg: "Registering the virtual G29 for local games..."; \
+  Flags: runhidden waituntilterminated runasoriginaluser
 
 [UninstallRun]
+Filename: "powershell.exe"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Register-G29FF.ps1"" -Action Uninstall"; \
+  Flags: runhidden waituntilterminated runasoriginaluser; RunOnceId: "UnregG29FF"
 Filename: "{app}\g25vg29.exe"; Parameters: "uninstall"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveService"
 Filename: "{app}\g25-virtual-g29.exe"; Parameters: "cleanup"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveVirtualG29"
 

@@ -7,6 +7,31 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+### Added - force feedback in local games (2026-09-08)
+
+The virtual G29 now works as a real FFB wheel for **local** DirectInput games,
+not just GeForce NOW - confirmed in Wreckfest and Forza Horizon 4, with the G25
+still hidden by HidHide.
+
+- `g25ff.dll` (core driver) gains a virtual-G29 output path: when a game creates
+  effects on `046D:C24F`, it writes lg4ff reports to that device instead of the
+  hidden G25. The bridge relay carries them to the G25 - same route as the
+  GeForce NOW client. lg4ff is one command format for G25/G27/G29, so no
+  translation is added.
+- `Register-G29FF.ps1` registers the per-user OEM / `OEMForceFeedback` metadata
+  for `046D:C24F` (`OEMName` = `Logitech G29 Driving Force Racing Wheel USB`,
+  `OEMData` = `43 00 08 10 19 00 00 00`) pointing at the g25ff class. Fixes
+  Forza Horizon 4 not seeing the wheel (a game had written a broken `03...`
+  entry). The installer runs it as the original user; no-op without the core
+  driver.
+- Local FFB depends on the core g25-driver being installed.
+
+### Fixed - tray "Maximum rotation" ignored in G29 mode (2026-09-08)
+
+The bridge hard-coded `--wheel-range 900`. The service (SYSTEM) now reads the
+tray's `Rotation` setting from `HKEY_USERS\<sid>\Software\g25-driver` and passes
+it; the tray bounces the bridge when the range changes while G29 mode is on.
+
 ### Fixed - physical G25 unplugged while G29 mode is on (2026-09-08)
 
 The bridge held the virtual G29 for 30 s then restart-looped forever, and the
