@@ -49,11 +49,15 @@ ApplyResult apply_to_wheel() {
         });
         if (found == devices.end()) {
             // While G29 mode is on, the bridge hides the physical G25 from other
-            // processes (HidHide), so not seeing it here is expected, not a fault.
-            const bool vg29_running = vg29::presence() == vg29::Presence::installed &&
-                (vg29::status().run == vg29::RunState::running ||
-                 vg29::status().run == vg29::RunState::starting);
-            status = vg29_running ? L"G29 mode active (G25 hidden)" : L"G25 not connected";
+            // processes (HidHide), so not seeing it here is normally expected -
+            // unless the bridge itself reports the wheel stopped responding.
+            status = L"G25 not connected";
+            if (vg29::presence() == vg29::Presence::installed) {
+                const auto vs = vg29::status();
+                const bool up = vs.run == vg29::RunState::running || vs.run == vg29::RunState::starting;
+                if (up) status = vs.wheel_lost ? L"G29 mode - G25 disconnected"
+                                               : L"G29 mode active (G25 hidden)";
+            }
             applied_path.clear();
             pending_path.clear();
             applied_rotation = 0;
@@ -105,6 +109,7 @@ void apply_or_retry(HWND window) {
 
 void show_menu(HWND window) {
     settings = read_user_settings();
+    apply_or_retry(window);   // refresh the status line (G25 / G29 mode) on open
     HMENU menu = CreatePopupMenu();
     HMENU rotation_menu = CreatePopupMenu();
     AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, status.c_str());

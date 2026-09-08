@@ -7,6 +7,21 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+### Fixed - physical G25 unplugged while G29 mode is on (2026-09-08)
+
+The bridge held the virtual G29 for 30 s then restart-looped forever, and the
+tray kept showing "G29 mode active". Now: the worker prints `WHEEL: lost` /
+`WHEEL: gone`, the service shows `wheel-lost` for ~15 s (tray: "G29 mode - G25
+disconnected"), then stops the service cleanly (virtual wheel removed, HidHide
+reverted, SCM Stopped, tray toggle clears). Also caps start failures at 4.
+The tray re-reads status when its menu opens.
+
+### Note - first-use pedal calibration
+
+A G25 pedal can read nothing until floored once (per power-cycle) - that is the
+wheel firmware, not the bridge. The bridge prints a one-line hint at startup;
+see README.
+
 ## [0.2.0] - 2026-09-08
 
 First release with the Virtual G29 bridge as an optional component of

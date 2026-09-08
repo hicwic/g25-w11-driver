@@ -250,6 +250,7 @@ static class Program
         Console.WriteLine(forceFeedback != null
             ? "Force feedback relay: virtual G29 -> physical G25 enabled (raw passthrough, see docs/ffb-protocol.md)."
             : "Force feedback relay: disabled.");
+        Console.WriteLine("Tip: press each pedal fully to the floor once - the G25 firmware calibrates pedal travel per power-cycle.");
         Console.WriteLine("Ctrl+C removes the virtual device and exits.");
         return PumpG25(target, source, forceFeedback, options, printEveryFrame: false);
     }
@@ -364,7 +365,16 @@ static class Program
 
         while (!Shutdown.IsCancellationRequested && DateTime.UtcNow < deadlineUtc)
         {
-            var frame = source.WaitFrame(stallTimeoutMs);
+            G25Frame frame;
+            try { frame = source.WaitFrame(stallTimeoutMs); }
+            catch (IOException)
+            {
+                // The physical G25 was read at least once and then went away for
+                // good (WHEEL: gone already printed). Exit 3 so the service tears
+                // the virtual wheel down instead of restart-looping.
+                Console.Error.WriteLine("Physical G25 disconnected; stopping the bridge.");
+                return 3;
+            }
             axes[HMAxis.X] = frame.Wheel;
             axes[HMAxis.Z] = MaybeInvert(frame.Accelerator, options.InvertAccelerator);
             axes[HMAxis.Rz] = MaybeInvert(frame.Brake, options.InvertBrake);

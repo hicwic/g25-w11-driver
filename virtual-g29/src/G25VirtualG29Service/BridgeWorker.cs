@@ -13,10 +13,18 @@ namespace G25VirtualG29Service;
 /// backoff if it crashes, stops it cleanly when the service stops, and turns its
 /// stdout into a <see cref="BridgeStatus"/>.
 /// </summary>
-sealed partial class BridgeWorker(BridgeStatus status, ILogger<BridgeWorker> log) : BackgroundService
+sealed partial class BridgeWorker(
+    BridgeStatus status, ILogger<BridgeWorker> log, IHostApplicationLifetime lifetime) : BackgroundService
 {
     private static readonly TimeSpan[] Backoff =
         [TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)];
+
+    // Exit code the worker uses for "the physical G25 was working, then went
+    // away for good". Restarting would just loop, so we stop the service.
+    private const int ExitWheelGone = 3;
+    private const int MaxRestartsBeforeGivingUp = 4;
+
+    private volatile bool _wheelGone;
 
     protected override async Task ExecuteAsync(CancellationToken stopping)
     {
@@ -36,6 +44,7 @@ sealed partial class BridgeWorker(BridgeStatus status, ILogger<BridgeWorker> log
         while (!stopping.IsCancellationRequested)
         {
             stopEvent.Reset();
+            _wheelGone = false;
             status.Update(s => { s.State = failures == 0 ? "starting" : "restarting"; s.LastError = null; });
 
             var args = string.Join(' ', BuildArgs(cfg, stopEventName));
@@ -88,6 +97,25 @@ sealed partial class BridgeWorker(BridgeStatus status, ILogger<BridgeWorker> log
 
             var code = proc.ExitCode;
             failures++;
+
+            if (code == ExitWheelGone || _wheelGone || failures > MaxRestartsBeforeGivingUp)
+            {
+                var why = code == ExitWheelGone || _wheelGone
+                    ? "physical G25 disconnected"
+                    : $"bridge failed to start {failures} times";
+                log.LogWarning("stopping the service: {Why}", why);
+                RevertHidHide(exe);
+                status.Update(s =>
+                {
+                    s.State = "stopped";
+                    s.LastError = why;
+                    s.VirtualDevice = null;
+                    s.FfbActive = false;
+                });
+                lifetime.StopApplication();   // SCM -> Stopped; tray shows G29 mode off
+                return;
+            }
+
             status.Update(s =>
             {
                 s.State = "restarting";
@@ -149,7 +177,13 @@ sealed partial class BridgeWorker(BridgeStatus status, ILogger<BridgeWorker> log
         else log.LogDebug("bridge: {Line}", line);
 
         if (line.StartsWith("Bridge is running", StringComparison.Ordinal))
-            status.Update(s => s.State = "running");
+            status.Update(s => { s.State = "running"; s.LastError = null; });
+        else if (line.StartsWith("WHEEL: lost", StringComparison.Ordinal))
+            status.Update(s => { s.State = "wheel-lost"; s.LastError = "physical G25 not responding"; });
+        else if (line.StartsWith("WHEEL: reconnected", StringComparison.Ordinal))
+            status.Update(s => { s.State = "running"; s.LastError = null; });
+        else if (line.StartsWith("WHEEL: gone", StringComparison.Ordinal))
+            _wheelGone = true;
         else if (TelemetryLine().Match(line) is { Success: true } m)
             status.Update(s =>
             {

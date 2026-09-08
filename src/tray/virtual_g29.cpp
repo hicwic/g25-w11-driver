@@ -77,13 +77,16 @@ Status status() {
                 result.ffb_active = json_flag(json, "\"ffbActive\"");
                 const auto state = json_string(json, "\"state\"");
                 if (state == "restarting") result.run = RunState::starting;
+                if (state == "wheel-lost") result.wheel_lost = true;
             }
             CloseHandle(pipe);
         }
     }
 
     switch (result.run) {
-    case RunState::running:   result.detail = L"On"; break;
+    case RunState::running:
+        result.detail = result.wheel_lost ? L"On - G25 disconnected" : L"On";
+        break;
     case RunState::starting:  result.detail = L"Starting..."; break;
     case RunState::stopping:  result.detail = L"Stopping..."; break;
     case RunState::stopped:   result.detail = L"Off"; break;
