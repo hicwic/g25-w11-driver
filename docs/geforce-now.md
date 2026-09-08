@@ -9,7 +9,9 @@ folder in this repo is a superseded proof of concept.
 
 Because GeForce NOW needs G HUB running, and G HUB WinUSB-claims the physical
 G25, read [ghub-coexistence.md](ghub-coexistence.md) - it applies to local use
-of this driver too.
+of this driver too. [gfn-client-internals.md](gfn-client-internals.md) digs into
+how the GFN client actually handles wheels (DirectInput + a network-delivered
+`RIDevices.json`; no G HUB references) and whether G HUB can be dropped.
 
 ## Current evidence
 
