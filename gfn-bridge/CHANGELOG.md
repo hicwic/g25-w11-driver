@@ -32,6 +32,14 @@ enumerating as `046D:C24F:0100`; GFN could not match it
 (`No known device with interface number 0`) and it jammed the wheel input path.
 
 ### Added
+- **`g25gfnbridge` service** (`src/G25GfnBridgeService/`): on-demand Windows
+  service (LocalSystem) that supervises the bridge worker - starts it, restarts
+  with backoff on crash, stops it cleanly, and exposes status on
+  `\\.\pipe\g25gfnbridge`. `install` / `uninstall` / `status` / `run` verbs.
+  The unprivileged tray drives it through the SCM.
+- Bridge `--stop-event <name>`: a supervising service signals a named event for
+  a clean shutdown (removes the virtual G29, stops G25 forces) instead of
+  Ctrl+C. Stop signalling is now a `CancellationTokenSource`.
 - **`Libg25.cs`**: P/Invoke over `libg25.dll` (driver `src/libg25/`). `G25Source`
   decodes the input report and `G25ForceFeedbackRelay` builds the wheel commands
   and translates FFB through it, instead of hand-maintaining the byte layout.

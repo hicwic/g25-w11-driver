@@ -83,17 +83,23 @@ between `g25tray`, `g25ff.dll` and the bridge worker.
   `Build` errors if it is missing.
 - Verified: `dry-run` decodes the real G25 through the DLL.
 
-### Phase 3 - `g25gfnbridge` service
-- `gfn-bridge/service/` - thin Windows service that supervises the bridge worker
-  (restart on crash / USB re-enum), logs to the Event Log + a rolling file.
-- Control: SCM start/stop for enable/disable; a status named pipe
-  (`\\.\pipe\g25gfnbridge`) emitting newline JSON (`state`, `virtual`, `ffb`,
-  `inputHz`, `lastError`).
-- Install (admin, once): `sc create g25gfnbridge start= demand`, `sc sdset` to
-  grant `RP` (start) `WP` (stop) `LC` (query) to `IU` (interactive users),
-  register + install the HIDMaestro driver.
-- The worker can stay the current CLI exe run by the service, or be folded into
-  the service process. Start with the service spawning the exe (least churn).
+### Phase 3 - `g25gfnbridge` service (done, needs an elevated test)
+- `gfn-bridge/src/G25GfnBridgeService/` - .NET Worker Service (`g25gfnbridge.exe`,
+  LocalSystem, `start=demand`).
+  - `install` / `uninstall` - `sc.exe` wrappers; `sdset` grants the interactive
+    user group (`IU`) START/STOP/QUERY so the unprivileged tray drives it.
+  - `run` - the SCM entry point; `BridgeWorker` spawns and supervises
+    `g25-gfn-wheel-bridge.exe bridge --stop-event <name> ...`, restarts it with
+    backoff (3/10/30 s) on crash, stops it cleanly on service stop, and turns
+    its stdout into `BridgeStatus`.
+  - `StatusServer` serves `\\.\pipe\g25gfnbridge` (newline JSON: `state`,
+    `virtualDevice`, `ffbActive`, `wheel`, `restarts`, `lastError`), readable by
+    any authenticated user. `status` verb prints one line.
+  - config: `%ProgramData%\g25gfnbridge\config.json` (profile, range, inverts).
+- Bridge: `--stop-event <name>` opens a named event and triggers the same clean
+  shutdown as Ctrl+C; stop signalling refactored to a `CancellationTokenSource`.
+- HIDMaestro driver install still happens via the bridge's `--install-driver`
+  (config flag on first run); the installer can also do it up front.
 
 ### Phase 4 - tray integration
 - Probe on menu open: `gfn-bridge/` payload present AND `g25gfnbridge` service

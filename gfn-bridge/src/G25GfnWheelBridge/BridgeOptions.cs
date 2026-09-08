@@ -27,4 +27,6 @@ sealed record BridgeOptions
     public bool KeepExisting { get; set; }
     // Sent to the G25 at startup so it is usable without G HUB. 0 = don't set range.
     public int WheelRangeDegrees { get; set; } = 900;
+    // Named Windows event a supervising service signals for a clean stop.
+    public string? StopEventName { get; set; }
 }

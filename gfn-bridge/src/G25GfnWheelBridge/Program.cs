@@ -8,6 +8,9 @@ namespace G25GfnWheelBridge;
 
 static class Program
 {
+    // Signalled by Ctrl+C, --stop-event, or --duration. PumpG25 loops on it.
+    static readonly CancellationTokenSource Shutdown = new();
+
     public static int Main(string[] args)
     {
         var command = args.Length > 0 ? args[0].ToLowerInvariant() : "help";
@@ -48,6 +51,7 @@ static class Program
         Console.WriteLine("  --profiles-dir <path>   Load additional HIDMaestro profiles from a directory");
         Console.WriteLine("  --keep-existing         Do not purge stale virtual G29 devices before starting");
         Console.WriteLine("  --wheel-range <deg>     G25 rotation range at startup, default 900 (0 to skip)");
+        Console.WriteLine("  --stop-event <name>     Named event a supervising service signals to stop cleanly");
         Console.WriteLine("  --rate-hz <n>           Submit rate, default 250");
         Console.WriteLine("  --duration <seconds>    Stop automatically after N seconds");
         Console.WriteLine("  --install-driver        Allow HIDMaestro driver install/refresh before bridge");
@@ -130,8 +134,29 @@ static class Program
         return 0;
     }
 
+    // Ctrl+C and --stop-event <name> both trigger a clean shutdown. A service
+    // supervising this process signals the named event instead of Ctrl+C.
+    static void RegisterShutdownSignals(BridgeOptions options)
+    {
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; Shutdown.Cancel(); };
+        if (string.IsNullOrEmpty(options.StopEventName)) return;
+        if (!EventWaitHandle.TryOpenExisting(options.StopEventName, out var stopEvent))
+        {
+            Console.Error.WriteLine($"--stop-event: no event named '{options.StopEventName}'; Ctrl+C still works.");
+            return;
+        }
+        var t = new Thread(() =>
+        {
+            try { stopEvent.WaitOne(); } catch { }
+            Console.WriteLine("Stop requested by the supervising service.");
+            Shutdown.Cancel();
+        }) { IsBackground = true, Name = "stop-event waiter" };
+        t.Start();
+    }
+
     static int DryRun(BridgeOptions options)
     {
+        RegisterShutdownSignals(options);
         using var source = G25Source.Open();
         Console.WriteLine($"Reading: {source.Name}");
         Console.WriteLine("No virtual device is created in dry-run mode. Ctrl+C stops.");
@@ -144,6 +169,8 @@ static class Program
         {
             return Fail("The bridge command must run as Administrator because HIDMaestro creates a virtual HID device.");
         }
+
+        RegisterShutdownSignals(options);
 
         using var ctx = new HMContext();
         var loaded = ctx.LoadDefaultProfiles();
@@ -283,15 +310,13 @@ static class Program
             [HMAxis.Y] = 0f,
         };
         var state = new HMGamepadState { Axes = axes, Hat = HMHat.None, Buttons = 0 };
-        var stop = false;
         var deadlineUtc = options.DurationSeconds > 0 ? DateTime.UtcNow.AddSeconds(options.DurationSeconds) : DateTime.MaxValue;
-        Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop = true; };
 
         var delayMs = Math.Max(1, 1000 / Math.Clamp(options.RateHz, 30, 1000));
         var sw = Stopwatch.StartNew();
         long lastPrint = -1;
 
-        while (!stop && DateTime.UtcNow < deadlineUtc)
+        while (!Shutdown.IsCancellationRequested && DateTime.UtcNow < deadlineUtc)
         {
             var frame = source.Read();
             axes[HMAxis.X] = frame.Wheel;
@@ -352,6 +377,9 @@ static class Program
                 case "--wheel-range":
                     if (!int.TryParse(RequireValue(args, ref i, "--wheel-range"), out var deg)) throw new ArgumentException("--wheel-range must be an integer (40-900, or 0 to skip)");
                     options.WheelRangeDegrees = deg;
+                    break;
+                case "--stop-event":
+                    options.StopEventName = RequireValue(args, ref i, "--stop-event");
                     break;
                 default: throw new ArgumentException($"Unknown option: {args[i]}");
             }
