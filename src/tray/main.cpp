@@ -25,7 +25,7 @@ std::wstring status = L"Starting...";
 std::wstring applied_path;
 std::wstring pending_path;
 int applied_rotation{};
-enum class ApplyResult { complete, retry };
+enum class ApplyResult { complete, retry, retry_slow };
 
 void add_icon(HWND window) {
     icon = {};
@@ -55,8 +55,12 @@ ApplyResult apply_to_wheel() {
             if (vg29::presence() == vg29::Presence::installed) {
                 const auto vs = vg29::status();
                 const bool up = vs.run == vg29::RunState::running || vs.run == vg29::RunState::starting;
-                if (up) status = vs.wheel_lost ? L"G29 mode - G25 disconnected"
-                                               : L"G29 mode active (G25 hidden)";
+                if (up) {
+                    if (vs.wheel_lost) status = L"G29 mode - G25 disconnected";
+                    else if (vs.wheel_range > 0 && vs.wheel_range != settings.rotation)
+                        status = L"G29 mode active - restart it for " + std::to_wstring(settings.rotation) + L" deg";
+                    else status = L"G29 mode active (G25 hidden)";
+                }
             }
             applied_path.clear();
             pending_path.clear();
@@ -80,6 +84,15 @@ ApplyResult apply_to_wheel() {
             pending_path.clear();
             return ApplyResult::complete;
         }
+        // A game (its g25ff.dll) or the bridge holds the wheel. Do NOT write -
+        // sending SET_RANGE / STOP_ALL / F5 mid-session yanks the wheel off
+        // centre. Leave it alone; re-apply once the game exits.
+        if (!WriterLock::available()) {
+            status = L"G25 in use - " + std::to_wstring(settings.rotation)
+                     + L" deg applies when the game exits";
+            pending_path.clear();
+            return ApplyResult::retry_slow;
+        }
         if (pending_path != found->path) {
             pending_path = found->path;
             status = L"Waiting for G25 calibration...";
@@ -97,14 +110,17 @@ ApplyResult apply_to_wheel() {
         status = L"G25 ready - " + std::to_wstring(settings.rotation) + L" deg";
         return ApplyResult::complete;
     } catch (...) {
-        status = L"G25 busy - setup pending";
-        return ApplyResult::retry;
+        status = L"G25 busy - retrying";
+        return ApplyResult::retry_slow;
     }
 }
 
 void apply_or_retry(HWND window) {
-    if (apply_to_wheel() == ApplyResult::retry) SetTimer(window, timer_id, 1000, nullptr);
-    else KillTimer(window, timer_id);
+    switch (apply_to_wheel()) {
+    case ApplyResult::retry:      SetTimer(window, timer_id, 1000, nullptr); break;
+    case ApplyResult::retry_slow: SetTimer(window, timer_id, 4000, nullptr); break; // e.g. wheel held by a game
+    case ApplyResult::complete:   KillTimer(window, timer_id); break;
+    }
 }
 
 void show_menu(HWND window) {
@@ -172,14 +188,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             pending_path = applied_path;
             (void)write_user_settings(settings);
             apply_or_retry(window);
-            // The bridge reads this setting at (re)start; bounce it so G29 mode
-            // picks up the new range too.
-            const auto vs = vg29::status();
-            if (vs.run == vg29::RunState::running || vs.run == vg29::RunState::starting) {
-                vg29::stop();
-                vg29::start();
-                SetTimer(window, timer_id, 2000, nullptr);
-            }
+            // G29 mode: the bridge reads this setting at (re)start. Do NOT bounce
+            // the service here - that drops the virtual G29 mid-game. The new
+            // range applies the next time G29 mode starts.
         } else if (command == cmd_vg29_toggle) {
             const auto st = vg29::status();
             if (st.run == vg29::RunState::running || st.run == vg29::RunState::starting)

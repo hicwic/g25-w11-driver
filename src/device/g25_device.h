@@ -17,6 +17,11 @@ public:
     ~WriterLock();
     WriterLock(const WriterLock&) = delete;
     WriterLock& operator=(const WriterLock&) = delete;
+
+    // Non-throwing peek: false when another writer (a game's g25ff.dll, the
+    // bridge worker, another g25tool) currently holds the output mutex.
+    static bool available() noexcept;
+
 private:
     UniqueHandle handle_;
 };

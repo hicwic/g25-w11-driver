@@ -4,6 +4,7 @@
 #include <windows.h>
 
 #include <array>
+#include <cstdlib>
 
 namespace g25::vg29 {
 namespace {
@@ -43,6 +44,13 @@ std::string json_string(const std::string& json, const char* key) {
     if (end == std::string::npos) return {};
     return json.substr(pos + 1, end - pos - 1);
 }
+int json_int(const std::string& json, const char* key) {
+    auto pos = json.find(key);
+    if (pos == std::string::npos) return 0;
+    pos = json.find(':', pos);
+    if (pos == std::string::npos) return 0;
+    return std::atoi(json.c_str() + pos + 1);
+}
 }
 
 Presence presence() {
@@ -75,6 +83,7 @@ Status status() {
             if (ReadFile(pipe, buffer.data(), static_cast<DWORD>(buffer.size() - 1), &read, nullptr) && read > 0) {
                 const std::string json(buffer.data(), read);
                 result.ffb_active = json_flag(json, "\"ffbActive\"");
+                result.wheel_range = json_int(json, "\"wheelRange\"");
                 const auto state = json_string(json, "\"state\"");
                 if (state == "restarting") result.run = RunState::starting;
                 if (state == "wheel-lost") result.wheel_lost = true;

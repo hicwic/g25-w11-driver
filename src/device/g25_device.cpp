@@ -88,4 +88,12 @@ WriterLock::WriterLock() : handle_(CreateMutexW(nullptr, FALSE, L"Local\\g25tool
     if (result == WAIT_ABANDONED) std::clog << "Previous writer exited unexpectedly; resetting effects before use\n";
 }
 WriterLock::~WriterLock() { ReleaseMutex(handle_.get()); }
+bool WriterLock::available() noexcept {
+    UniqueHandle handle(CreateMutexW(nullptr, FALSE, L"Local\\g25tool-output-v1"));
+    if (!handle.valid()) return false;
+    const auto result = WaitForSingleObject(handle.get(), 0);
+    const bool got = result == WAIT_OBJECT_0 || result == WAIT_ABANDONED;
+    if (got) ReleaseMutex(handle.get());
+    return got;
+}
 }

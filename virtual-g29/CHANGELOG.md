@@ -7,6 +7,22 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+### Fixed - the tray disturbing the wheel while a game is running (2026-09-09)
+
+Opening the tray menu (or changing "Maximum rotation") while a game held the
+wheel could send `SET_RANGE` + `STOP_ALL` + `DISABLE_AUTOCENTER` mid-session,
+which yanked the wheel off centre; and it showed an alarming "G25 busy - setup
+pending" retry loop.
+
+- The tray now checks the shared output mutex first (`WriterLock::available()`).
+  If a game's `g25ff.dll` or the bridge holds the wheel it does **not** write -
+  status reads "G25 in use - <deg> applies when the game exits" and it re-checks
+  every 4 s. The new rotation is applied the moment the game closes.
+- G29 mode: changing the rotation no longer **bounces the g25vg29 service**
+  (that dropped the virtual G29 mid-game). The new range applies the next time
+  G29 mode starts; the tray shows "restart it for <deg>" until then
+  (`BridgeStatus.wheelRange`, from the worker's startup line).
+
 ## [0.2.1] - 2026-09-08
 
 Local-game force feedback via the virtual G29, Forza Horizon 4 support, the

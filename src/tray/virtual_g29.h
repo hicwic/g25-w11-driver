@@ -15,6 +15,7 @@ struct Status {
     RunState run{RunState::stopped};
     bool ffb_active{false};
     bool wheel_lost{false};   // service running but the physical G25 stopped responding
+    int wheel_range{0};       // rotation the running bridge applied (0 = unknown)
     std::wstring detail;      // short line for the menu, e.g. "On" / "Off" / "Starting..."
 };
 
