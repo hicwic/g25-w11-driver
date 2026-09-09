@@ -32,6 +32,11 @@ public:
 
     // Non-throwing peek: false when another writer (a game's g25ff.dll, the
     // bridge worker, another g25tool) currently holds the output mutex.
+    //
+    // A mutex cannot be probed without taking it, so this acquires and releases.
+    // One visible consequence: if the previous writer died holding the mutex,
+    // this clears the abandoned state, and the WriterLock built afterwards sees
+    // a clean acquisition instead of reporting the crash.
     static bool available() noexcept;
 
 private:
