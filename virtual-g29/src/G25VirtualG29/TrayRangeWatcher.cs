@@ -26,10 +26,17 @@ sealed class TrayRangeWatcher : IDisposable
         SafeWaitHandle hEvent, bool fAsynchronous);
 
     private readonly Thread _thread;
+    private readonly CancellationTokenSource _stop;
 
     private TrayRangeWatcher(string sid, int initialDegrees, Action<int> onChange, CancellationToken token)
     {
-        _thread = new Thread(() => Run(sid, initialDegrees, onChange, token))
+        // Linked so the watcher stops on either the bridge's shutdown token or
+        // our own Dispose. Bridge() can return without cancelling that token
+        // (--duration expiry, or the "physical G25 gone" exit), and a Dispose
+        // that cannot actually stop its thread is a lie.
+        _stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var stopping = _stop.Token;
+        _thread = new Thread(() => Run(sid, initialDegrees, onChange, stopping))
         {
             IsBackground = true,
             Name = "tray wheel-range watcher",
@@ -43,9 +50,6 @@ sealed class TrayRangeWatcher : IDisposable
     private static void Run(string sid, int lastApplied, Action<int> onChange, CancellationToken token)
     {
         var subKey = $@"{sid}\Software\g25-driver";
-        using var signal = new ManualResetEventSlim(false);
-        using var reg = token.Register(signal.Set);
-
         while (!token.IsCancellationRequested)
         {
             RegistryKey? key = null;
@@ -97,5 +101,12 @@ sealed class TrayRangeWatcher : IDisposable
     private static int? ReadRotation(RegistryKey key)
         => key.GetValue("Rotation") is int r && r is 180 or 360 or 540 or 900 ? r : null;
 
-    public void Dispose() => _thread.Join(1000);
+    public void Dispose()
+    {
+        _stop.Cancel();
+        // Only release the source once the thread is really out of it - it waits
+        // on the token's handle, and disposing that from under it would throw on
+        // a background thread.
+        if (_thread.Join(1000)) _stop.Dispose();
+    }
 }

@@ -164,9 +164,16 @@ sealed partial class BridgeWorker(
     // \Rotation. The service runs as SYSTEM, so read it from HKEY_USERS. Returns
     // the interactive user's SID (so the worker can watch the key for live
     // changes) and the current range, either of which may be absent.
+    //
+    // The SID is still reported when the key does not exist yet: the tray only
+    // creates it once the user picks a rotation from the menu, and without a SID
+    // the worker would run with no watcher at all - no live rotation for the
+    // whole session on a fresh install. The worker's watcher retries OpenSubKey
+    // until the key appears.
     private TrayInfo TrayRotation()
     {
         if (!OperatingSystem.IsWindows()) return default;
+        string? candidateSid = null;
         try
         {
             using var users = Microsoft.Win32.RegistryKey.OpenBaseKey(
@@ -177,6 +184,10 @@ sealed partial class BridgeWorker(
                     sid.EndsWith("_Classes", StringComparison.OrdinalIgnoreCase) ||
                     sid is "S-1-5-18" or "S-1-5-19" or "S-1-5-20")
                     continue;
+                // S-1-5-21-* is a real local/domain account, so this skips the
+                // service and well-known SIDs whose hives are also loaded.
+                if (candidateSid == null && sid.StartsWith("S-1-5-21-", StringComparison.OrdinalIgnoreCase))
+                    candidateSid = sid;
                 try
                 {
                     using var key = users.OpenSubKey($@"{sid}\Software\g25-driver");
@@ -189,7 +200,9 @@ sealed partial class BridgeWorker(
             }
         }
         catch (Exception ex) { log.LogDebug(ex, "could not read tray rotation"); }
-        return default;
+        if (candidateSid != null)
+            log.LogInformation("no tray rotation set yet; watching user {Sid} for one", candidateSid);
+        return new TrayInfo(candidateSid, null);
     }
 
     // If the worker was killed rather than exiting cleanly, its HidHide cloak
