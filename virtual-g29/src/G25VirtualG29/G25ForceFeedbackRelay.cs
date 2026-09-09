@@ -79,7 +79,6 @@ sealed class G25ForceFeedbackRelay : IDisposable
         var range = Libg25.SetRange(degrees);
         if (range == null) return;
         _commands.TryAdd(range);
-        // Matches the service's "Wheel range: N deg" parser -> BridgeStatus.WheelRange.
         Console.WriteLine($"Wheel range: {degrees} deg");
     }
 

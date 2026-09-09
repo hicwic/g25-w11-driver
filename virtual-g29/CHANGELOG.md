@@ -7,12 +7,18 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
-### Added - live "Maximum rotation" change while a game runs (2026-09-09)
+### Changed - "Maximum rotation" now changes live during a game (2026-09-09)
 
-Changing the tray's **Maximum rotation** now takes effect immediately, even mid-race,
-without restarting the game or G29 mode. Useful for games with no in-game wheel
-range setting (Forza Horizon, Wreckfest, BeamNG).
+Changing the tray's **Maximum rotation** used to be either impossible while a
+game ran ("G25 busy - setup pending" retry loop), or, if the tray did write, it
+sent `SET_RANGE` + `STOP_ALL` + `DISABLE_AUTOCENTER` mid-session and yanked the
+wheel off centre. In G29 mode it also **bounced the g25vg29 service**, dropping
+the virtual G29 mid-race. Now the change takes effect immediately, without
+restarting the game or G29 mode - useful for games with no in-game wheel range
+setting (Forza Horizon, Wreckfest, BeamNG).
 
+- The tray never writes to the wheel while another writer holds it
+  (`WriterLock::available()`); it just updates its status line.
 - The component that owns the G25 output watches `HKCU\Software\g25-driver`
   (`RegNotifyChangeKeyValue`, no polling) and sends **SET_RANGE only** - no
   stop-forces / autocenter reset - so the wheel stays centred and forces keep
@@ -20,23 +26,9 @@ range setting (Forza Horizon, Wreckfest, BeamNG).
   - Local DirectInput game: `g25ff.dll` runs the watcher on its FFB worker thread.
   - G29 mode: the bridge worker runs it; the service passes the interactive
     user's SID (`--user-sid`) so the SYSTEM worker can read `HKEY_USERS\<sid>`.
-- The tray still never writes to the wheel while it is in use; it shows
-  "applying &lt;deg&gt; deg" and reconciles when the game exits.
-
-### Fixed - the tray disturbing the wheel while a game is running (2026-09-09)
-
-Opening the tray menu (or changing "Maximum rotation") while a game held the
-wheel could send `SET_RANGE` + `STOP_ALL` + `DISABLE_AUTOCENTER` mid-session,
-which yanked the wheel off centre; and it showed an alarming "G25 busy - setup
-pending" retry loop.
-
-- The tray now checks the shared output mutex first (`WriterLock::available()`).
-  If a game's `g25ff.dll` or the bridge holds the wheel it does **not** write -
-  status reads "G25 in use - <deg> applies when the game exits" and it re-checks
-  every 4 s. The new rotation is applied the moment the game closes.
-- G29 mode: changing the rotation no longer **bounces the g25vg29 service**
-  (that dropped the virtual G29 mid-game). The new range is applied live by the
-  worker (see above); `BridgeStatus.wheelRange` reflects what it applied.
+- The G29-mode rotation change no longer bounces the service.
+- Tray status lines simplified: `G25 ready - <deg>`, `G25 in use - <deg>`,
+  `G29 mode active - <deg>` (no more "restart it for", "applying", "G25 hidden").
 
 ## [0.2.1] - 2026-09-08
 

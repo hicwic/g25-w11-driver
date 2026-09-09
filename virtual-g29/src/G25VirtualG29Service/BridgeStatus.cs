@@ -35,7 +35,6 @@ sealed class BridgeStatus
         [JsonPropertyName("virtualDevice")] public string? VirtualDevice { get; set; }
         [JsonPropertyName("ffbActive")] public bool FfbActive { get; set; }
         [JsonPropertyName("wheel")] public double Wheel { get; set; }
-        [JsonPropertyName("wheelRange")] public int WheelRange { get; set; }
         [JsonPropertyName("restarts")] public int Restarts { get; set; }
         [JsonPropertyName("lastError")] public string? LastError { get; set; }
         [JsonPropertyName("updatedUtc")] public DateTimeOffset UpdatedUtc { get; set; } = DateTimeOffset.UtcNow;

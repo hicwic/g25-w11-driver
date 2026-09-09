@@ -57,9 +57,7 @@ ApplyResult apply_to_wheel() {
                 const bool up = vs.run == vg29::RunState::running || vs.run == vg29::RunState::starting;
                 if (up) {
                     if (vs.wheel_lost) status = L"G29 mode - G25 disconnected";
-                    else if (vs.wheel_range > 0 && vs.wheel_range != settings.rotation)
-                        status = L"G29 mode active - applying " + std::to_wstring(settings.rotation) + L" deg";
-                    else status = L"G29 mode active (G25 hidden)";
+                    else status = L"G29 mode active - " + std::to_wstring(settings.rotation) + L" deg";
                 }
             }
             applied_path.clear();
@@ -89,7 +87,7 @@ ApplyResult apply_to_wheel() {
         // off centre. The holder watches HKCU\Software\g25-driver and applies the
         // new range live (SET_RANGE only); we just reconcile once the game exits.
         if (!WriterLock::available()) {
-            status = L"G25 in use - applying " + std::to_wstring(settings.rotation) + L" deg";
+            status = L"G25 in use - " + std::to_wstring(settings.rotation) + L" deg";
             pending_path.clear();
             return ApplyResult::retry_slow;
         }

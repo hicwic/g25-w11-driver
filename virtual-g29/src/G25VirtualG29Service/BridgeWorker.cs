@@ -220,8 +220,6 @@ sealed partial class BridgeWorker(
 
         if (line.StartsWith("Bridge is running", StringComparison.Ordinal))
             status.Update(s => { s.State = "running"; s.LastError = null; });
-        else if (WheelRangeLine().Match(line) is { Success: true } wr)
-            status.Update(s => s.WheelRange = int.Parse(wr.Groups[1].Value, CultureInfo.InvariantCulture));
         else if (line.StartsWith("WHEEL: lost", StringComparison.Ordinal))
             status.Update(s => { s.State = "wheel-lost"; s.LastError = "physical G25 not responding"; });
         else if (line.StartsWith("WHEEL: reconnected", StringComparison.Ordinal))
@@ -242,9 +240,6 @@ sealed partial class BridgeWorker(
 
     [GeneratedRegex(@"wheel=([0-9.,]+).*ffbHz=(\d+)")]
     private static partial Regex TelemetryLine();
-
-    [GeneratedRegex(@"^Wheel range: (\d+) deg")]
-    private static partial Regex WheelRangeLine();
 
     private sealed record Config
     {
