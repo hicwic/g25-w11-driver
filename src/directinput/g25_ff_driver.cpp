@@ -173,11 +173,13 @@ private:
     std::thread thread_;
 };
 
-// The shared writer mutex is NOT held here: it has thread affinity, so worker()
-// owns it for the whole session (see EffectDriver::worker).
 struct Hardware {
     DeviceInfo info;
     std::wstring g29_path;                  // non-empty => drive the virtual G29
+    // Taken lazily, only once the game actually plays an effect. Claiming it
+    // when the device is merely acquired would let any process that touches the
+    // wheel (Steam Input, a launcher) starve the game that is really driving it.
+    std::unique_ptr<WriterLock> writer_lock;
     std::unique_ptr<HidTransport> transport;
     std::unique_ptr<OutputSession> output;
     std::unique_ptr<G29Output> g29;
@@ -275,22 +277,10 @@ public:
                 active_external_id_ = external_id;
                 quitting_ = false;
                 hardware_failed_ = false;
-                lock_settled_ = false;
                 pending_range_.reset();
                 last_.fill(std::nullopt);
             }
             worker_ = std::thread(&EffectDriver::worker, this);
-            // The worker takes the shared writer mutex; wait for that to settle so
-            // "another writer owns the wheel" is still reported synchronously.
-            {
-                std::unique_lock lock(mutex_);
-                lock_ready_.wait(lock, [this] { return lock_settled_; });
-                if (hardware_failed_) {
-                    lock.unlock();
-                    shutdown();
-                    return DIERR_INPUTLOST;
-                }
-            }
             if (!drive_g29) {
                 range_watcher_ = std::make_unique<RangeWatcher>([this](int degrees) {
                     std::lock_guard lock(mutex_);
@@ -502,7 +492,7 @@ private:
                 g29->send(disable_autocenter());
                 hardware_->g29 = std::move(g29);
             } else {
-                // worker() already holds the shared writer mutex for this session.
+                hardware_->writer_lock = std::make_unique<WriterLock>();
                 hardware_->transport = std::make_unique<HidTransport>(hardware_->info, Access::write);
                 auto output = std::make_unique<OutputSession>(*hardware_->transport);
                 output->initialize();
@@ -515,6 +505,7 @@ private:
             hardware_->output.reset();
             hardware_->g29.reset();
             hardware_->transport.reset();
+            hardware_->writer_lock.reset();
             return false;
         }
     }
@@ -673,32 +664,6 @@ private:
         if (best_friction) desired[3] = condition_command(*best_friction);
     }
     void worker() noexcept {
-        // A Win32 mutex may only be released by the thread that took it, and this
-        // thread outlives every COM call that touches the wheel - so the shared
-        // writer lock is taken and dropped here, not in activate_locked(). Taking
-        // it on the game's DirectInput thread and dropping it on whichever thread
-        // ran shutdown() left it held for the life of the game process.
-        // Wait briefly rather than failing fast: the tray holds the mutex for a
-        // few milliseconds when it applies a rotation, and losing that race would
-        // cost the game force feedback for its whole session.
-        std::unique_ptr<WriterLock> writer_lock;
-        bool needs_wheel;
-        {
-            std::lock_guard guard(mutex_);
-            needs_wheel = hardware_ && hardware_->g29_path.empty();
-        }
-        bool lock_failed = false;
-        if (needs_wheel) {
-            try { writer_lock = std::make_unique<WriterLock>(std::chrono::milliseconds{500}); }
-            catch (...) { lock_failed = true; }
-        }
-        {
-            std::lock_guard guard(mutex_);
-            if (lock_failed) hardware_failed_ = true;
-            lock_settled_ = true;
-        }
-        lock_ready_.notify_all();
-
         std::unique_lock lock(mutex_);
         while (!quitting_) {
             // Live "Maximum rotation" change from the tray (SET_RANGE only, so
@@ -762,8 +727,6 @@ private:
     std::atomic<long> refs_{1};
     std::mutex mutex_;
     std::condition_variable wake_;
-    std::condition_variable lock_ready_;   // worker() has settled the shared writer mutex
-    bool lock_settled_{true};
     std::thread worker_;
     std::unique_ptr<RangeWatcher> range_watcher_;
     std::optional<int> pending_range_;   // guarded by mutex_; set by the watcher, applied by worker()
