@@ -7,6 +7,27 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+### Added - Logitech G27 support (2026-09-09, untested on hardware)
+
+The G27 (`046D:C29B`) shares the lg4ff protocol with the G25 - force feedback,
+range and the compat-mode HID descriptors are identical; only the native
+button field differs (22 buttons + button 23 at payload bit 80, vs the G25's
+19 + 3 vendor bits) and the native-mode switch (`0xf8 0x09 0x04 0x01` vs
+`0xf8 0x10`).
+
+- `identify_model` already keyed the G27 off its `0x123x` revision. The decoder
+  (`decode_native_payload` / `libg25` / `G25Source`) now takes a model and reads
+  the wider G27 button field. `native_input_layout` / `verify_native_offsets` /
+  `logitech_output_layout` / `require_g25_writer` accept `046D:C29B`.
+- Tray + `g25tool native` send the G27 switch command for a G27 in compat mode
+  and manage its rotation like a G25.
+- Bridge: `G25Source` and `G25ForceFeedbackRelay` accept the G27 as the source
+  wheel, so GeForce NOW and local-game FFB (via the virtual G29) work for a G27.
+- `Register-G25FF.ps1` registers the g25ff effect driver + OEM metadata for
+  `046D:C29B` too (`OEMName` = `Logitech G27 Racing Wheel USB`).
+
+**Not yet validated on a real G27** - the switch bytes, descriptor and button
+layout are from new-lg4ff / lg4ff_userspace.
 ## [0.2.2] - 2026-09-10
 
 Tray "Maximum rotation" now applies live while a game runs - locally and in

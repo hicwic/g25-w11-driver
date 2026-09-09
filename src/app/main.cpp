@@ -95,14 +95,15 @@ class DryWriter : public ReportWriter {
     void send(const Command& command) override { std::cout << "DRY-RUN TX [" << hex_bytes(windows_output(command)) << "]\n"; }
 };
 // The same sequence is used by dry-run and hardware; only the writer/wait differ.
-void perform_output(ReportWriter& writer, const Options& options, const ConsoleStop* stop) {
+void perform_output(ReportWriter& writer, const Options& options, const ConsoleStop* stop,
+                    Model model = Model::g25) {
     OutputSession session(writer);
     session.initialize();
     if (stop && stop->requested()) return;
     if (options.command == "native") {
         // Stop before a command that may invalidate the handle by USB detach.
         session.finish();
-        try { writer.send(native_mode()); }
+        try { writer.send(native_mode(model)); }
         catch (...) {
             OutputSession cleanup(writer); // Best effort if detach made the result ambiguous.
             throw;
@@ -156,7 +157,9 @@ int run(const Options& options) {
     std::clog << "Selected: " << utf8(device.path) << '\n';
     ConsoleStop stop;
     if (options.command == "monitor") {
-        if (device.pid != g25_pid) throw std::runtime_error("monitor needs native G25 mode; run native, wait, then list");
+        const Model monitor_model = identify_model(device.pid, device.revision);
+        if (device.pid != g25_pid && device.pid != g27_pid)
+            throw std::runtime_error("monitor needs native G25/G27 mode; run native, wait, then list");
         HidTransport transport(device, Access::read);
         std::cout << "Assumed range: " << options.range << " deg (not read from device). Ctrl+C exits.\n"
                   << "Gear* is indicative Profiler mapping; confirm against raw buttons on your shifter.\n";
@@ -170,7 +173,7 @@ int run(const Options& options) {
             if (!report) continue;
             received = true;
             const auto now = std::chrono::steady_clock::now();
-            const auto state = decode_windows_input(*report);
+            const auto state = decode_windows_input(*report, monitor_model);
             // Preserve brief button/gear transitions while limiting axis-only
             // console updates to 20 Hz. --raw shows every received report.
             const bool button_change = !last_state || state.buttons != last_state->buttons || state.hat != last_state->hat;
@@ -184,12 +187,16 @@ int run(const Options& options) {
         return stop.requested() ? 130 : (received ? 0 : 1);
     }
     require_g25_writer(device, options.command == "native");
-    if (options.command == "native" && device.pid == g25_pid) { std::cout << "Already in G25 mode; no reports sent.\n"; return 0; }
+    const Model model = identify_model(device.pid, device.revision);
+    const std::uint16_t native_pid = model == Model::g27 ? g27_pid : g25_pid;
+    if (options.command == "native" && device.pid == native_pid) {
+        std::cout << "Already in native mode; no reports sent.\n"; return 0;
+    }
     WriterLock lock;
     // The CLI is the diagnostic tool: echo every report it sends.
     HidTransport transport(device, Access::write, Trace::transmit);
     if (stop.requested()) return 130;
-    perform_output(transport, options, &stop);
+    perform_output(transport, options, &stop, model);
     return stop.requested() ? 130 : 0;
 }
 }

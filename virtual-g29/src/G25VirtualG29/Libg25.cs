@@ -28,10 +28,10 @@ static partial class Libg25
     public static partial int IdentifyModel(ushort pid, ushort revision);
 
     [LibraryImport(Dll, EntryPoint = "g25_decode_input")]
-    private static partial int g25_decode_input(ReadOnlySpan<byte> report, int len, out InputState state);
+    private static partial int g25_decode_input(ReadOnlySpan<byte> report, int len, int model, out InputState state);
 
     [LibraryImport(Dll, EntryPoint = "g25_cmd_native_mode")]
-    private static partial void g25_cmd_native_mode(Span<byte> out8);
+    private static partial void g25_cmd_native_mode(int model, Span<byte> out8);
 
     [LibraryImport(Dll, EntryPoint = "g25_cmd_stop_all")]
     private static partial void g25_cmd_stop_all(Span<byte> out8);
@@ -52,10 +52,10 @@ static partial class Libg25
     public static partial string Version();
 
     /// <summary>Decode a 12-byte Windows HID input report. Returns null on a malformed report.</summary>
-    public static InputState? DecodeInput(ReadOnlySpan<byte> report)
-        => g25_decode_input(report, report.Length, out var s) == 0 ? s : null;
+    public static InputState? DecodeInput(ReadOnlySpan<byte> report, Model model = Model.G25)
+        => g25_decode_input(report, report.Length, (int)model, out var s) == 0 ? s : null;
 
-    public static byte[] NativeMode() { var b = new byte[8]; g25_cmd_native_mode(b); return b; }
+    public static byte[] NativeMode(Model model = Model.G25) { var b = new byte[8]; g25_cmd_native_mode((int)model, b); return b; }
     public static byte[] StopAll() { var b = new byte[8]; g25_cmd_stop_all(b); return b; }
     public static byte[] DisableAutocenter() { var b = new byte[8]; g25_cmd_disable_autocenter(b); return b; }
 

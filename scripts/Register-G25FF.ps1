@@ -14,7 +14,9 @@ if (-not $Dll32) { $Dll32 = Join-Path $scriptDir '..\build\portable-release-x86\
 if (-not $Tray) { $Tray = Join-Path $scriptDir '..\build\portable-release\g25tray.exe' }
 
 $driverClsid = '{D7A3D8CB-8B3C-4C35-A552-73A4BEB529E0}'
-$oemPath = 'System\CurrentControlSet\Control\MediaProperties\PrivateProperties\Joystick\OEM\VID_046D&PID_C299'
+$oemBase = 'System\CurrentControlSet\Control\MediaProperties\PrivateProperties\Joystick\OEM'
+$oemPath = "$oemBase\VID_046D&PID_C299"                       # G25 native - backed up/restored
+$g27OemPath = "$oemBase\VID_046D&PID_C29B"                    # G27 native - created/removed, no backup
 $comPath = "Software\Classes\CLSID\$driverClsid"
 $stateRoot = Join-Path $env:LOCALAPPDATA 'g25ff'
 $stateFile = Join-Path $stateRoot 'installation.json'
@@ -36,6 +38,47 @@ function DWords([uint32[]]$Values) {
     foreach ($value in $Values) { $bytes.AddRange([BitConverter]::GetBytes($value)) }
     Write-Output -NoEnumerate $bytes.ToArray()
 }
+$ffEffects = @(
+    @('{13541C20-8E33-11D0-9AD0-00A0C9A06E35}', 'Constant', 0, 0x8601, 0x3ed),
+    @('{13541C21-8E33-11D0-9AD0-00A0C9A06E35}', 'Ramp Force', 1, 0x8602, 0x3ef),
+    @('{13541C22-8E33-11D0-9AD0-00A0C9A06E35}', 'Square Wave', 2, 0x8603, 0x3ef),
+    @('{13541C23-8E33-11D0-9AD0-00A0C9A06E35}', 'Sine Wave', 3, 0x8603, 0x3ef),
+    @('{13541C24-8E33-11D0-9AD0-00A0C9A06E35}', 'Triangle Wave', 4, 0x8603, 0x3ef),
+    @('{13541C25-8E33-11D0-9AD0-00A0C9A06E35}', 'Sawtooth Up Wave', 5, 0x8603, 0x3ef),
+    @('{13541C26-8E33-11D0-9AD0-00A0C9A06E35}', 'Sawtooth Down Wave', 6, 0x8603, 0x3ef),
+    @('{13541C27-8E33-11D0-9AD0-00A0C9A06E35}', 'Spring',   7, 0xd804, 0x36d),
+    @('{13541C28-8E33-11D0-9AD0-00A0C9A06E35}', 'Damper',   8, 0xd804, 0x36d),
+    @('{13541C29-8E33-11D0-9AD0-00A0C9A06E35}', 'Inertia',  9, 0xd804, 0x36d),
+    @('{13541C2A-8E33-11D0-9AD0-00A0C9A06E35}', 'Friction', 10, 0xd804, 0x36d),
+    @('{13541C2B-8E33-11D0-9AD0-00A0C9A06E35}', 'Custom Force', 11, 0x8605, 0x3ef)
+)
+function Set-OemWheel([Microsoft.Win32.RegistryKey]$Base, [string]$Path, [string]$Name, [byte[]]$Data) {
+    $oem = $Base.CreateSubKey($Path, $true)
+    try {
+        $oem.SetValue('OEMName', $Name, [Microsoft.Win32.RegistryValueKind]::String)
+        $oem.SetValue('OEMData', $Data, [Microsoft.Win32.RegistryValueKind]::Binary)
+    } finally { $oem.Dispose() }
+    $axis = $Base.CreateSubKey("$Path\Axes\0", $true)
+    try {
+        $axis.SetValue('', 'Wheel axis', [Microsoft.Win32.RegistryValueKind]::String)
+        $axis.SetValue('Attributes', [byte[]](0x01, 0x81, 0x00, 0x00), [Microsoft.Win32.RegistryValueKind]::Binary)
+        $axis.SetValue('FFAttributes', [byte[]](0x0a, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00),
+                       [Microsoft.Win32.RegistryValueKind]::Binary)
+    } finally { $axis.Dispose() }
+    $ff = $Base.CreateSubKey("$Path\OEMForceFeedback", $true)
+    try {
+        $ff.SetValue('Attributes', (DWords @(0, 4000, 4000)), [Microsoft.Win32.RegistryValueKind]::Binary)
+        $ff.SetValue('CLSID', $driverClsid, [Microsoft.Win32.RegistryValueKind]::String)
+    } finally { $ff.Dispose() }
+    foreach ($effect in $ffEffects) {
+        $key = $Base.CreateSubKey("$Path\OEMForceFeedback\Effects\$($effect[0])", $true)
+        try {
+            $key.SetValue('', $effect[1], [Microsoft.Win32.RegistryValueKind]::String)
+            $key.SetValue('Attributes', (DWords @([uint32]$effect[2], [uint32]$effect[3],
+                [uint32]$effect[4], [uint32]$effect[4], 0x30)), [Microsoft.Win32.RegistryValueKind]::Binary)
+        } finally { $key.Dispose() }
+    }
+}
 function Set-Registration([Microsoft.Win32.RegistryView]$View, [string]$Dll) {
     $base = Open-Base $View
     try {
@@ -44,50 +87,9 @@ function Set-Registration([Microsoft.Win32.RegistryView]$View, [string]$Dll) {
             $server.SetValue('', $Dll, [Microsoft.Win32.RegistryValueKind]::String)
             $server.SetValue('ThreadingModel', 'Both', [Microsoft.Win32.RegistryValueKind]::String)
         } finally { $server.Dispose() }
-
-        $oem = $base.CreateSubKey($oemPath, $true)
-        try {
-            $oem.SetValue('OEMName', 'Logitech G25 Racing Wheel USB', [Microsoft.Win32.RegistryValueKind]::String)
-            $oem.SetValue('OEMData', [byte[]](0x43, 0x00, 0x88, 0x10, 0x13, 0x00, 0x00, 0x00),
-                          [Microsoft.Win32.RegistryValueKind]::Binary)
-        } finally { $oem.Dispose() }
-
-        $axis = $base.CreateSubKey("$oemPath\Axes\0", $true)
-        try {
-            $axis.SetValue('', 'Wheel axis', [Microsoft.Win32.RegistryValueKind]::String)
-            $axis.SetValue('Attributes', [byte[]](0x01, 0x81, 0x00, 0x00), [Microsoft.Win32.RegistryValueKind]::Binary)
-            $axis.SetValue('FFAttributes', [byte[]](0x0a, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00),
-                           [Microsoft.Win32.RegistryValueKind]::Binary)
-        } finally { $axis.Dispose() }
-
-        $ff = $base.CreateSubKey("$oemPath\OEMForceFeedback", $true)
-        try {
-            $ff.SetValue('Attributes', (DWords @(0, 4000, 4000)), [Microsoft.Win32.RegistryValueKind]::Binary)
-            $ff.SetValue('CLSID', $driverClsid, [Microsoft.Win32.RegistryValueKind]::String)
-        } finally { $ff.Dispose() }
-
-        $effects = @(
-            @('{13541C20-8E33-11D0-9AD0-00A0C9A06E35}', 'Constant', 0, 0x8601, 0x3ed),
-            @('{13541C21-8E33-11D0-9AD0-00A0C9A06E35}', 'Ramp Force', 1, 0x8602, 0x3ef),
-            @('{13541C22-8E33-11D0-9AD0-00A0C9A06E35}', 'Square Wave', 2, 0x8603, 0x3ef),
-            @('{13541C23-8E33-11D0-9AD0-00A0C9A06E35}', 'Sine Wave', 3, 0x8603, 0x3ef),
-            @('{13541C24-8E33-11D0-9AD0-00A0C9A06E35}', 'Triangle Wave', 4, 0x8603, 0x3ef),
-            @('{13541C25-8E33-11D0-9AD0-00A0C9A06E35}', 'Sawtooth Up Wave', 5, 0x8603, 0x3ef),
-            @('{13541C26-8E33-11D0-9AD0-00A0C9A06E35}', 'Sawtooth Down Wave', 6, 0x8603, 0x3ef),
-            @('{13541C27-8E33-11D0-9AD0-00A0C9A06E35}', 'Spring',   7, 0xd804, 0x36d),
-            @('{13541C28-8E33-11D0-9AD0-00A0C9A06E35}', 'Damper',   8, 0xd804, 0x36d),
-            @('{13541C29-8E33-11D0-9AD0-00A0C9A06E35}', 'Inertia',  9, 0xd804, 0x36d),
-            @('{13541C2A-8E33-11D0-9AD0-00A0C9A06E35}', 'Friction', 10, 0xd804, 0x36d),
-            @('{13541C2B-8E33-11D0-9AD0-00A0C9A06E35}', 'Custom Force', 11, 0x8605, 0x3ef)
-        )
-        foreach ($effect in $effects) {
-            $key = $base.CreateSubKey("$oemPath\OEMForceFeedback\Effects\$($effect[0])", $true)
-            try {
-                $key.SetValue('', $effect[1], [Microsoft.Win32.RegistryValueKind]::String)
-                $key.SetValue('Attributes', (DWords @([uint32]$effect[2], [uint32]$effect[3],
-                    [uint32]$effect[4], [uint32]$effect[4], 0x30)), [Microsoft.Win32.RegistryValueKind]::Binary)
-            } finally { $key.Dispose() }
-        }
+        # OEMData byte 4 is the button count: 0x13 = 19 (G25), 0x17 = 23 (G27).
+        Set-OemWheel $base $oemPath 'Logitech G25 Racing Wheel USB' ([byte[]](0x43,0x00,0x88,0x10,0x13,0x00,0x00,0x00))
+        Set-OemWheel $base $g27OemPath 'Logitech G27 Racing Wheel USB' ([byte[]](0x43,0x00,0x88,0x10,0x17,0x00,0x00,0x00))
     } finally { $base.Dispose() }
 }
 function Remove-Key([Microsoft.Win32.RegistryView]$View, [string]$Path) {
@@ -184,6 +186,8 @@ foreach ($bits in 64, 32) {
         Remove-Key $view $oemPath
         & reg.exe import (Join-Path $state.backup "oem-$bits.reg") "/reg:$bits" | Out-Null
     }
+    # The G27 native key is created by this script, not backed up - just remove it.
+    Remove-Key $view $g27OemPath
 }
 Remove-Item -LiteralPath $stateFile
 if ($state.version -ge 2) {

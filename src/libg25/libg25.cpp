@@ -28,10 +28,19 @@ int32_t g25_identify_model(uint16_t pid, uint16_t revision) {
     return G25_MODEL_UNKNOWN;
 }
 
-int32_t g25_decode_input(const uint8_t *report, int32_t len, g25_input_state *out) {
+static g25::Model model_from_int(int32_t model) {
+    switch (model) {
+    case G25_MODEL_G27: return g25::Model::g27;
+    case G25_MODEL_G29: return g25::Model::g29;
+    default: return g25::Model::g25;
+    }
+}
+
+int32_t g25_decode_input(const uint8_t *report, int32_t len, int32_t model, g25_input_state *out) {
     if (report == nullptr || out == nullptr || len != 12) return -1;
     try {
-        const auto state = g25::decode_windows_input(std::span<const std::uint8_t>(report, static_cast<std::size_t>(len)));
+        const auto state = g25::decode_windows_input(
+            std::span<const std::uint8_t>(report, static_cast<std::size_t>(len)), model_from_int(model));
         out->wheel = state.wheel;
         out->throttle = state.throttle;
         out->brake = state.brake;
@@ -44,8 +53,8 @@ int32_t g25_decode_input(const uint8_t *report, int32_t len, g25_input_state *ou
     }
 }
 
-void g25_cmd_native_mode(uint8_t *out8) {
-    if (out8) write_output(out8, g25::native_mode());
+void g25_cmd_native_mode(int32_t model, uint8_t *out8) {
+    if (out8) write_output(out8, g25::native_mode(model_from_int(model)));
 }
 
 void g25_cmd_stop_all(uint8_t *out8) {
