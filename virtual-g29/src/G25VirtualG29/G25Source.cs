@@ -19,7 +19,10 @@ sealed record G25Frame(float Wheel, float Accelerator, float Brake, float Clutch
 sealed class G25Source : IDisposable
 {
     private const int LogitechVendorId = 0x046D;
-    private const int G25NativeProductId = 0xC299;
+    // Native-mode product ids: G25 = C299, G27 = C29B. Same 12/8-byte report
+    // shape; the button field differs, so the decoder needs the model.
+    private static readonly (int pid, Libg25.Model model)[] NativeWheels =
+        { (0xC299, Libg25.Model.G25), (0xC29B, Libg25.Model.G27) };
 
     // How long ReadLoop keeps trying to re-acquire the G25 after an I/O error
     // before giving up. Startup USB re-enumeration is handled separately by
@@ -27,6 +30,7 @@ sealed class G25Source : IDisposable
     private static readonly TimeSpan ReconnectWindow = TimeSpan.FromSeconds(15);
 
     private HidStream _stream;
+    private readonly Libg25.Model _model;
     private readonly byte[] _report = new byte[12];
     private readonly ManualResetEventSlim _firstFrame = new(false);
     // Pulsed on every decoded frame so the submit loop runs at the wheel's own
@@ -37,26 +41,31 @@ sealed class G25Source : IDisposable
     private Exception? _failure;
     private volatile bool _stopping;
 
-    private G25Source(HidStream stream, string name)
+    private G25Source(HidStream stream, string name, Libg25.Model model)
     {
         _stream = stream;
+        _model = model;
         Name = name;
         _reader = new Thread(ReadLoop) { IsBackground = true, Name = "G25 HID input reader" };
         _reader.Start();
     }
 
     public string Name { get; }
+    public Libg25.Model Model => _model;
 
-    private static HidStream? TryAcquireStream()
+    private static (HidStream stream, Libg25.Model model)? TryAcquireStream()
     {
-        foreach (var device in DeviceList.Local.GetHidDevices(LogitechVendorId, G25NativeProductId))
+        foreach (var (pid, model) in NativeWheels)
         {
-            if (device.GetMaxInputReportLength() != 12 || device.GetMaxOutputReportLength() != 8)
-                continue;
-            if (device.TryOpen(out var stream))
+            foreach (var device in DeviceList.Local.GetHidDevices(LogitechVendorId, pid))
             {
-                stream.ReadTimeout = 100;
-                return stream;
+                if (device.GetMaxInputReportLength() != 12 || device.GetMaxOutputReportLength() != 8)
+                    continue;
+                if (device.TryOpen(out var stream))
+                {
+                    stream.ReadTimeout = 100;
+                    return (stream, model);
+                }
             }
         }
         return null;
@@ -68,21 +77,20 @@ sealed class G25Source : IDisposable
         var deadline = DateTime.UtcNow + timeout;
         do
         {
-            var stream = TryAcquireStream();
-            if (stream != null)
+            if (TryAcquireStream() is { } got)
             {
                 string name;
-                try { name = stream.Device.GetProductName(); }
-                catch { name = "Logitech G25"; }
-                return new G25Source(stream, name);
+                try { name = got.stream.Device.GetProductName(); }
+                catch { name = got.model == Libg25.Model.G27 ? "Logitech G27" : "Logitech G25"; }
+                return new G25Source(got.stream, name, got.model);
             }
             if (DateTime.UtcNow < deadline) Thread.Sleep(250);
         } while (DateTime.UtcNow < deadline);
 
         throw new InvalidOperationException(
-            "No native physical G25 HID input found (expected 046D:C299 with 12-byte input and 8-byte output reports). "
-            + "If Logitech G HUB is running it may have taken the wheel into compatibility mode (046D:C294); "
-            + "switch it back to native mode (g25tool native, or replug).");
+            "No native physical G25/G27 HID input found (expected 046D:C299 or 046D:C29B with 12-byte input "
+            + "and 8-byte output reports). If Logitech G HUB is running it may have taken the wheel into "
+            + "compatibility mode; switch it back to native mode (g25tool native, or replug).");
     }
 
     // Re-acquire the G25 after a USB re-enumeration. Returns false if the device
@@ -94,11 +102,10 @@ sealed class G25Source : IDisposable
         var deadline = DateTime.UtcNow + ReconnectWindow;
         while (!_stopping && DateTime.UtcNow < deadline)
         {
-            var stream = TryAcquireStream();
-            if (stream != null)
+            if (TryAcquireStream() is { } got)
             {
                 try { _stream.Dispose(); } catch { }
-                _stream = stream;
+                _stream = got.stream;
                 Console.WriteLine("WHEEL: reconnected");
                 return true;
             }
@@ -131,7 +138,7 @@ sealed class G25Source : IDisposable
                 var count = _stream.Read(_report, 0, _report.Length);
                 if (count != _report.Length) continue;
 
-                var decoded = Libg25.DecodeInput(_report);
+                var decoded = Libg25.DecodeInput(_report, _model);
                 if (decoded is not { } s) continue;
                 Volatile.Write(ref _latest, new G25Frame(
                     s.Wheel / 16383f,

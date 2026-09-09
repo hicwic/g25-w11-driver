@@ -116,6 +116,14 @@ are separate in the native report; combined pedals are a software transform.
 (900 by default). The studied protocol does not provide a verified readback for
 the current steering range.
 
+**G27 native (`046D:C29B`, revision `0x123x`).** Wheel, pedals and POV are byte
+-identical to the table above. The button field is wider: bits 4-25 are buttons
+1-22 (page `09`), there is no 3-bit vendor field before the wheel, and bit 80
+(`p[10]` bit 0) is button 23 (usage `0x17`). Native-mode switch is
+`f8 09 04 01 00 00 00` (vs the G25's `f8 10`); FFB, range and the compat-mode
+descriptors are the same. Bytes from new-lg4ff `lg4ff_mode_switch_ext09_g27`
+and lg4ff_userspace `rd_g27`.
+
 ### Shifter
 
 [Logitech documents][gears] gears 1-6 and R as DirectX buttons 8-14 using

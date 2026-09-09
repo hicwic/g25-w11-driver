@@ -1,7 +1,8 @@
 # g25-userspace
 
-Open source **C++20 / CMake** prototype for using a Logitech G25 on Windows 11
-through the standard Microsoft HID stack. License: GPL-2.0-only.
+Open source **C++20 / CMake** prototype for using a Logitech G25 (and,
+experimentally, a **G27**) on Windows 11 through the standard Microsoft HID
+stack. License: GPL-2.0-only.
 
 The project provides:
 

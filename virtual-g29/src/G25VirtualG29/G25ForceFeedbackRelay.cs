@@ -17,7 +17,7 @@ namespace G25VirtualG29;
 sealed class G25ForceFeedbackRelay : IDisposable
 {
     private const int LogitechVendorId = 0x046D;
-    private const int G25NativeProductId = 0xC299;
+    private static readonly int[] NativeProductIds = { 0xC299, 0xC29B }; // G25, G27 - same lg4ff FFB report
 
     private static readonly TimeSpan ReconnectWindow = TimeSpan.FromSeconds(30);
 
@@ -70,7 +70,8 @@ sealed class G25ForceFeedbackRelay : IDisposable
 
     private static HidStream? TryAcquireStream()
     {
-        foreach (var device in DeviceList.Local.GetHidDevices(LogitechVendorId, G25NativeProductId))
+        foreach (var pid in NativeProductIds)
+        foreach (var device in DeviceList.Local.GetHidDevices(LogitechVendorId, pid))
         {
             if (device.GetMaxOutputReportLength() != 8) continue;
             if (device.TryOpen(out var stream))
@@ -87,7 +88,7 @@ sealed class G25ForceFeedbackRelay : IDisposable
         var stream = TryAcquireStream();
         if (stream == null)
             throw new InvalidOperationException(
-                "The physical G25 HID force-feedback output was not found (expected 046D:C299 with an 8-byte output report).");
+                "The physical G25/G27 HID force-feedback output was not found (expected 046D:C299 or 046D:C29B with an 8-byte output report).");
 
         string name;
         try { name = stream.Device.GetProductName(); }

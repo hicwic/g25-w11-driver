@@ -21,14 +21,15 @@ void hid_status(NTSTATUS status, const char* operation) {
     if (status != HIDP_STATUS_SUCCESS)
         throw std::runtime_error(std::string(operation) + " failed, NTSTATUS=" + std::to_string(status));
 }
-bool verify_native_offsets(PHIDP_PREPARSED_DATA preparsed) {
+bool verify_native_offsets(PHIDP_PREPARSED_DATA preparsed, Model model) {
     // Exercise the Windows parser with walking bits in LOCAL buffers. This
     // verifies the hardcoded decoder's offsets, not just sizes/usages. These
     // synthetic reports are NEVER sent to the wheel.
+    const USAGE max_button = model == Model::g27 ? 23 : 19;
     for (unsigned bit = 0; bit < 88; ++bit) {
         std::array<std::uint8_t, 12> report{};
         report[1 + bit / 8] = static_cast<std::uint8_t>(1u << (bit % 8));
-        const auto expected = decode_windows_input(report);
+        const auto expected = decode_windows_input(report, model);
         const std::array<USAGE, 5> usages{0x30, 0x32, 0x35, 0x31, 0x39};
         const std::array<ULONG, 5> values{expected.wheel, expected.throttle, expected.brake, expected.clutch, expected.hat};
         for (std::size_t index = 0; index < usages.size(); ++index) {
@@ -37,13 +38,13 @@ bool verify_native_offsets(PHIDP_PREPARSED_DATA preparsed) {
                                   reinterpret_cast<PCHAR>(report.data()), static_cast<ULONG>(report.size())) != HIDP_STATUS_SUCCESS ||
                 value != values[index]) return false;
         }
-        std::array<USAGE, 19> buttons{};
+        std::array<USAGE, 24> buttons{};
         ULONG count = static_cast<ULONG>(buttons.size());
         if (HidP_GetUsages(HidP_Input, 9, 0, buttons.data(), &count, preparsed,
                           reinterpret_cast<PCHAR>(report.data()), static_cast<ULONG>(report.size())) != HIDP_STATUS_SUCCESS) return false;
         std::uint32_t mask{};
         for (ULONG index = 0; index < count; ++index) {
-            if (buttons[index] < 1 || buttons[index] > 19) return false;
+            if (buttons[index] < 1 || buttons[index] > max_button) return false;
             mask |= 1u << (buttons[index] - 1);
         }
         if (mask != expected.buttons) return false;
@@ -81,7 +82,9 @@ void describe(HANDLE handle, DeviceInfo& info) {
         info.input_buttons.resize(count);
     }
     info.caps_valid = true;
-    if (native_input_layout(info)) info.native_offsets_verified = verify_native_offsets(preparsed.value);
+    if (native_input_layout(info))
+        info.native_offsets_verified =
+            verify_native_offsets(preparsed.value, identify_model(info.pid, info.revision));
 }
 bool usage_matches(const HIDP_VALUE_CAPS& cap, USAGE page, USAGE usage) {
     return cap.UsagePage == page &&
@@ -180,14 +183,18 @@ std::vector<DeviceInfo> enumerate_wheels() {
     return devices;
 }
 bool native_input_layout(const DeviceInfo& info) {
-    if (!info.caps_valid || info.pid != g25_pid || info.caps.InputReportByteLength != 12 ||
-        info.caps.UsagePage != 1 || info.caps.Usage != 4) return false;
+    if (!info.caps_valid || (info.pid != g25_pid && info.pid != g27_pid) ||
+        info.caps.InputReportByteLength != 12 || info.caps.UsagePage != 1 || info.caps.Usage != 4)
+        return false;
     if (!axis_matches(info, 0x30, 14, 16383) || !axis_matches(info, 0x32, 8, 255) ||
         !axis_matches(info, 0x35, 8, 255) || !axis_matches(info, 0x31, 8, 255) ||
         !axis_matches(info, 0x39, 4, 7)) return false;
-    return std::any_of(info.input_buttons.begin(), info.input_buttons.end(), [](const auto& cap) {
+    // G25: button range 1..19. G27: range 1..22, plus a separate cap for
+    // button 23 (usage 0x17). Accept either.
+    const auto max = info.pid == g27_pid ? USAGE{22} : USAGE{19};
+    return std::any_of(info.input_buttons.begin(), info.input_buttons.end(), [&](const auto& cap) {
         return cap.ReportID == 0 && cap.UsagePage == 9 && cap.IsRange &&
-            cap.Range.UsageMin == 1 && cap.Range.UsageMax == 19;
+            cap.Range.UsageMin == 1 && cap.Range.UsageMax == max;
     });
 }
 bool logitech_output_layout(const DeviceInfo& info) {
@@ -196,8 +203,9 @@ bool logitech_output_layout(const DeviceInfo& info) {
         return false;
     // hid-lg.c df_rdesc_fixed / dfp_rdesc_fixed have Generic Desktop
     // output usages 3 / 2. They must not be mistaken for the native FF00:2.
+    // The G27 native output report is identical to the G25's (FF00:2, 7 bytes).
     return std::any_of(info.output_values.begin(), info.output_values.end(), [&](const auto& cap) {
-        const bool usage = (info.pid == g25_pid && usage_matches(cap, 0xff00, 2)) ||
+        const bool usage = ((info.pid == g25_pid || info.pid == g27_pid) && usage_matches(cap, 0xff00, 2)) ||
                            (info.pid == dfp_pid && usage_matches(cap, 1, 2)) ||
                            (info.pid == dfex_pid && (usage_matches(cap, 1, 3) || usage_matches(cap, 0xff00, 3)));
         return usage && cap.ReportID == 0 && cap.BitSize == 8 && cap.ReportCount == 7;

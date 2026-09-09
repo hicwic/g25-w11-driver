@@ -30,8 +30,10 @@ void run() {
 
     // Wheel command byte layouts.
     std::array<std::uint8_t, 8> out{};
-    g25_cmd_native_mode(out.data());
-    check((out == std::array<std::uint8_t, 8>{0, 0xf8, 0x10, 0, 0, 0, 0, 0}), "native mode report");
+    g25_cmd_native_mode(G25_MODEL_G25, out.data());
+    check((out == std::array<std::uint8_t, 8>{0, 0xf8, 0x10, 0, 0, 0, 0, 0}), "G25 native mode report");
+    g25_cmd_native_mode(G25_MODEL_G27, out.data());
+    check((out == std::array<std::uint8_t, 8>{0, 0xf8, 0x09, 0x04, 0x01, 0, 0, 0}), "G27 native mode report");
     g25_cmd_stop_all(out.data());
     check(out[0] == 0 && out[1] == 0xf3, "stop all");
     g25_cmd_disable_autocenter(out.data());
@@ -44,14 +46,30 @@ void run() {
     // Input decode - the hand-assembled bit-boundary vector from protocol_tests.
     const std::array<std::uint8_t, 12> report{0, 0x98, 0x01, 0x80, 0x02, 0x80, 0xff, 0, 0x7f, 0x12, 0x34, 0x56};
     g25_input_state st{};
-    check(g25_decode_input(report.data(), 12, &st) == 0, "decode ok");
+    check(g25_decode_input(report.data(), 12, G25_MODEL_G25, &st) == 0, "decode ok");
     check(st.wheel == 8192 && st.buttons == 0x19 && st.hat == 8, "decoded axes/buttons");
     check(st.throttle == 255 && st.brake == 0 && st.clutch == 127, "decoded pedals");
-    check(g25_decode_input(report.data(), 11, &st) == -1, "short report rejected");
+    check(g25_decode_input(report.data(), 11, G25_MODEL_G25, &st) == -1, "short report rejected");
     auto bad = report;
     bad[0] = 1;
-    check(g25_decode_input(bad.data(), 12, &st) == -1, "report id 1 rejected");
-    check(g25_decode_input(nullptr, 12, &st) == -1, "null report rejected");
+    check(g25_decode_input(bad.data(), 12, G25_MODEL_G25, &st) == -1, "report id 1 rejected");
+    check(g25_decode_input(nullptr, 12, G25_MODEL_G25, &st) == -1, "null report rejected");
+
+    // G27: wheel/pedals/hat decode identically; only the button field is wider
+    // (22 bits at payload bit 4 vs 19 + 3 vendor bits) plus button 23.
+    g25_input_state g27{};
+    check(g25_decode_input(report.data(), 12, G25_MODEL_G27, &g27) == 0, "G27 decode ok");
+    check(g27.wheel == 8192 && g27.hat == 8, "G27 wheel/hat identical to G25");
+    check(g27.throttle == 255 && g27.brake == 0 && g27.clutch == 127, "G27 pedals identical");
+    // This vector sets payload bits 19 and 21 -> G25 folds them into vendor bits
+    // (buttons 0x19), G27 sees them as buttons 20 and 22 (0x280019).
+    check(g27.buttons == 0x280019u, "G27 reads the extra button bits");
+    // Button 23 is payload byte 10 bit 0 == report byte 11 bit 0.
+    std::array<std::uint8_t, 12> b23{}; b23[11] = 0x01;
+    check(g25_decode_input(b23.data(), 12, G25_MODEL_G27, &g27) == 0 && g27.buttons == (1u << 22),
+          "G27 button 23 at payload bit 80");
+    check(g25_decode_input(b23.data(), 12, G25_MODEL_G25, &st) == 0 && st.buttons == 0,
+          "G25 treats that bit as a vendor byte");
 
     // FFB - passthrough (mode 0).
     std::array<std::uint8_t, 8> ffb{};

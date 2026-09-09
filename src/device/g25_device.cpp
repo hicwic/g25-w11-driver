@@ -20,13 +20,15 @@ DeviceInfo select_device(const std::vector<DeviceInfo>& devices, std::optional<s
     return *selected;
 }
 void require_g25_writer(const DeviceInfo& info, bool switching_mode) {
-    if (info.vid != logitech_vid || identify_model(info.pid, info.revision) != Model::g25)
-        throw std::runtime_error("writes require a recognized real G25 revision; no reports sent");
-    if (!switching_mode && info.pid != g25_pid)
+    const Model model = identify_model(info.pid, info.revision);
+    if (info.vid != logitech_vid || (model != Model::g25 && model != Model::g27))
+        throw std::runtime_error("writes require a recognized real G25/G27 revision; no reports sent");
+    const std::uint16_t native_pid = model == Model::g27 ? g27_pid : g25_pid;
+    if (!switching_mode && info.pid != native_pid)
         throw std::runtime_error("wheel is in compatibility mode; run native, wait for re-enumeration, then list");
     if (!logitech_output_layout(info)) throw std::runtime_error("unverified HID output layout; inspect info before any writes");
     if (!switching_mode && (!native_input_layout(info) || !info.native_offsets_verified))
-        throw std::runtime_error("unverified native G25 descriptor; no reports sent");
+        throw std::runtime_error("unverified native descriptor; no reports sent");
 }
 void print_device_info(const DeviceInfo& info, std::size_t index, bool detailed) {
     std::cout << '[' << index << "] " << utf8(info.name) << " VID:PID=" << std::hex << std::setfill('0')
