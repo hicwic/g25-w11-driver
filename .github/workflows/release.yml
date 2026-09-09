@@ -78,4 +78,8 @@ jobs:
             "dist/g25-w11-driver-$env:G25_VERSION-setup.exe",
             "dist/g25-virtual-g29-$env:G25_VERSION-setup.exe"
           )
-          gh release create $env:G25_VERSION $assets --target $env:GITHUB_SHA --title $env:G25_VERSION --notes-file dist\CHANGELOG.md
+          $ghArgs = @($env:G25_VERSION) + $assets + @(
+            '--target', $env:GITHUB_SHA, '--title', $env:G25_VERSION, '--notes-file', 'dist\CHANGELOG.md')
+          # A SemVer pre-release identifier (v1.2.3-rc1) publishes as a pre-release.
+          if ($env:G25_VERSION -match '-') { $ghArgs += '--prerelease' }
+          gh release create @ghArgs
