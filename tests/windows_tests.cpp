@@ -2,6 +2,7 @@
 #include "app/console_stop.h"
 #include "device/g25_device.h"
 #include "settings/user_settings.h"
+#include <atomic>
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -90,6 +91,42 @@ void run() {
         });
         contender.join();
         check(blocked, "concurrent writers are refused");
+    }
+    {
+        // g25ff.dll claims the wheel for a whole game session, so it waits for the
+        // current writer instead of failing fast the way the CLI and tray do.
+        std::atomic<bool> holding{false};
+        std::thread holder([&] {
+            WriterLock held(std::chrono::milliseconds(5000));
+            holding = true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(80));
+        });
+        while (!holding) std::this_thread::yield();
+        const auto start = std::chrono::steady_clock::now();
+        bool acquired = false;
+        try { WriterLock waited(std::chrono::milliseconds(5000)); acquired = true; }
+        catch (const std::exception&) {}
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        holder.join();
+        check(acquired, "timeout constructor waits for the current writer");
+        check(elapsed >= std::chrono::milliseconds(40), "timeout constructor really blocked");
+    }
+    {
+        // ...but it still gives up rather than hanging when the wheel stays busy.
+        std::atomic<bool> holding{false};
+        std::atomic<bool> release{false};
+        std::thread holder([&] {
+            WriterLock held(std::chrono::milliseconds(5000));
+            holding = true;
+            while (!release) std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        });
+        while (!holding) std::this_thread::yield();
+        bool refused = false;
+        try { WriterLock waited(std::chrono::milliseconds(30)); }
+        catch (const std::exception&) { refused = true; }
+        release = true;
+        holder.join();
+        check(refused, "timeout constructor gives up when the wheel stays busy");
     }
     {
         ConsoleStop stop;

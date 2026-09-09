@@ -80,9 +80,11 @@ void print_inputs(const InputState& state, int assumed_range, bool raw, std::spa
     if (raw) std::cout << " | RX: " << hex_bytes(report);
     std::cout << '\n';
 }
-WriterLock::WriterLock() : handle_(CreateMutexW(nullptr, FALSE, L"Local\\g25tool-output-v1")) {
+WriterLock::WriterLock() : WriterLock(std::chrono::milliseconds{0}) {}
+WriterLock::WriterLock(std::chrono::milliseconds timeout)
+    : handle_(CreateMutexW(nullptr, FALSE, L"Local\\g25tool-output-v1")) {
     if (!handle_.valid()) throw std::runtime_error(windows_error("CreateMutex(output)", GetLastError()));
-    const auto result = WaitForSingleObject(handle_.get(), 0);
+    const auto result = WaitForSingleObject(handle_.get(), static_cast<DWORD>(timeout.count()));
     if (result != WAIT_OBJECT_0 && result != WAIT_ABANDONED)
         throw std::runtime_error("another g25tool writer is active; stop it before changing wheel output");
     if (result == WAIT_ABANDONED) std::clog << "Previous writer exited unexpectedly; resetting effects before use\n";

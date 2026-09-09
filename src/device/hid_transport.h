@@ -39,9 +39,15 @@ bool native_input_layout(const DeviceInfo& info);
 bool logitech_output_layout(const DeviceInfo& info);
 
 enum class Access { read, write };
+// Per-report "TX [..]" logging on std::clog. Diagnostic only, for the CLI.
+// Must stay off in g25ff.dll and g25tray: the effect driver sends up to ~250
+// reports a second from inside a third-party game process, where formatting a
+// hex line per report is both wasted work on the force-feedback path and noise
+// in the host application's stderr.
+enum class Trace { off, transmit };
 class HidTransport : public ReportWriter {
 public:
-    HidTransport(const DeviceInfo& expected, Access access);
+    HidTransport(const DeviceInfo& expected, Access access, Trace trace = Trace::off);
     ~HidTransport() override;
     HidTransport(const HidTransport&) = delete;
     HidTransport& operator=(const HidTransport&) = delete;
@@ -52,6 +58,7 @@ public:
 private:
     UniqueHandle handle_;
     Access access_;
+    Trace trace_;
     DeviceInfo info_;
 };
 }
