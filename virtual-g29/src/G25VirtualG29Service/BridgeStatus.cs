@@ -10,8 +10,6 @@ sealed class BridgeStatus
     private readonly object _gate = new();
     private Snapshot _snap = new();
 
-    public event Action<string>? Changed;
-
     public string Json
     {
         get { lock (_gate) return _snap.ToJson(); }
@@ -19,14 +17,11 @@ sealed class BridgeStatus
 
     public void Update(Action<Snapshot> mutate)
     {
-        string json;
         lock (_gate)
         {
             mutate(_snap);
             _snap.UpdatedUtc = DateTimeOffset.UtcNow;
-            json = _snap.ToJson();
         }
-        Changed?.Invoke(json);
     }
 
     public sealed class Snapshot

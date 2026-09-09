@@ -53,8 +53,12 @@ static class ServiceInstall
             CreateNoWindow = true,
         };
         using var p = Process.Start(psi)!;
-        var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+        // Drain both pipes concurrently; reading one to the end while the other
+        // fills its buffer deadlocks the pair.
+        var stdout = p.StandardOutput.ReadToEndAsync();
+        var stderr = p.StandardError.ReadToEndAsync();
         p.WaitForExit();
+        var output = stdout.Result + stderr.Result;
         if (p.ExitCode != 0 && !quiet)
             Console.Error.WriteLine($"sc {arguments.Split(' ')[0]} -> {p.ExitCode}: {output.Trim()}");
         return p.ExitCode;

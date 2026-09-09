@@ -9,25 +9,42 @@ using Microsoft.Extensions.Logging;
 namespace G25VirtualG29Service;
 
 /// <summary>
-/// Serves the current <see cref="BridgeStatus"/> as newline-delimited JSON on
-/// <c>\\.\pipe\g25vg29</c> - one line on connect, then one per change.
-/// Readable by any authenticated user so the unprivileged tray can consume it.
+/// Serves the current <see cref="BridgeStatus"/> as one JSON line on
+/// <c>\\.\pipe\g25vg29</c>, then hangs up. Readable by any authenticated user so
+/// the unprivileged tray can consume it.
 /// </summary>
+/// <remarks>
+/// Both consumers poll one line and disconnect (the tray's <c>vg29::status()</c>,
+/// and <c>g25vg29 status</c>). An earlier version kept the connection open to
+/// stream every change, which meant it could not tell a client had hung up until
+/// the next status change - up to a second later - while that dead connection
+/// held the only pipe instance. Polls landing in that window silently got
+/// nothing. Serving a snapshot per connection removes the failure mode; several
+/// accept loops run in parallel so an instance is always ready.
+/// </remarks>
 sealed class StatusServer(BridgeStatus status, ILogger<StatusServer> log) : BackgroundService
 {
     public const string PipeName = "g25vg29";
+    private const int AcceptLoops = 3;   // must stay <= the pipe's instance limit
 
-    protected override async Task ExecuteAsync(CancellationToken stopping)
+    protected override Task ExecuteAsync(CancellationToken stopping) =>
+        Task.WhenAll(Enumerable.Range(0, AcceptLoops).Select(_ => AcceptLoop(stopping)));
+
+    private async Task AcceptLoop(CancellationToken stopping)
     {
         while (!stopping.IsCancellationRequested)
         {
             try
             {
+                // Disposing the stream (rather than Disconnect(), which would
+                // discard unread bytes) lets the client drain the line it asked
+                // for and then see end-of-file.
                 using var server = CreatePipe();
                 await server.WaitForConnectionAsync(stopping);
-                await ServeClient(server, stopping);
+                await Write(server, status.Json, stopping);
             }
             catch (OperationCanceledException) { }
+            catch (IOException) { /* client hung up before reading */ }
             catch (Exception ex)
             {
                 log.LogWarning(ex, "status pipe error");
@@ -47,30 +64,9 @@ sealed class StatusServer(BridgeStatus status, ILogger<StatusServer> log) : Back
             PipeAccessRights.FullControl, AccessControlType.Allow));
 
         return NamedPipeServerStreamAcl.Create(
-            PipeName, PipeDirection.Out, 4,
+            PipeName, PipeDirection.Out, AcceptLoops,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous,
             0, 0, security);
-    }
-
-    private async Task ServeClient(NamedPipeServerStream server, CancellationToken stopping)
-    {
-        var pending = new SemaphoreSlim(1);
-        var latest = status.Json;
-
-        void OnChange(string json) { latest = json; try { pending.Release(); } catch { } }
-        status.Changed += OnChange;
-        try
-        {
-            await Write(server, latest, stopping);
-            while (!stopping.IsCancellationRequested && server.IsConnected)
-            {
-                await pending.WaitAsync(stopping);
-                await Write(server, latest, stopping);
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (IOException) { /* client went away */ }
-        finally { status.Changed -= OnChange; }
     }
 
     private static async Task Write(NamedPipeServerStream server, string json, CancellationToken ct)

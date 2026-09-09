@@ -340,10 +340,21 @@ static class Program
             };
             using var p = Process.Start(psi);
             if (p == null) return;
-            var output = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(15000);
-            foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            // Both pipes must be drained concurrently: stderr is redirected, so
+            // leaving it unread while blocking on stdout would hang the bridge
+            // startup outright if PowerShell filled the stderr buffer.
+            var stdout = p.StandardOutput.ReadToEndAsync();
+            var stderr = p.StandardError.ReadToEndAsync();
+            if (!p.WaitForExit(15000))
+            {
+                try { p.Kill(entireProcessTree: true); } catch { }
+                Console.Error.WriteLine("Purging stale virtual wheels timed out.");
+                return;
+            }
+            foreach (var line in stdout.Result.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 Console.WriteLine("  " + line);
+            var errors = stderr.Result.Trim();
+            if (errors.Length > 0) Console.Error.WriteLine("  " + errors);
         }
         catch (Exception ex)
         {
