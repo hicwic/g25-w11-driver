@@ -26,6 +26,9 @@ public:
     // effect driver - where losing to the tray's few-millisecond range write
     // would cost the whole session its force feedback.
     explicit WriterLock(std::chrono::milliseconds timeout);
+    // Same semantics on a caller-chosen mutex. Only the tests use this, so that
+    // a game legitimately holding the real wheel does not fail the suite.
+    WriterLock(const wchar_t* mutex_name, std::chrono::milliseconds timeout);
     ~WriterLock();
     WriterLock(const WriterLock&) = delete;
     WriterLock& operator=(const WriterLock&) = delete;
