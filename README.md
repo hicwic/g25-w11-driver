@@ -25,6 +25,34 @@ The Virtual G29 bridge is a separate opt-in component (it adds a virtual HID
 driver and a Windows service); the core driver above stays pure per-user. See
 [virtual-g29/README.md](virtual-g29/README.md).
 
+## Before you install: remove the legacy Logitech driver
+
+> **The old Logitech software for the G25 (Logitech Gaming Software / Logitech
+> Profiler / WingMan - anything from before G HUB, the one that needs Windows
+> driver-signature enforcement disabled) must be *completely* removed, driver
+> included.** Uninstalling the app is **not** enough: it leaves the WingMan
+> filter drivers (`WmHidLo` on the USB stack, `WmFilter` on the HID stack, from
+> Logitech `oem*.inf` packages such as `WmJoyHid` / `WmVirHid` / `WmBEnum`) in
+> the Windows driver store. They stay bound to the G25, keep it on the legacy
+> HID descriptor (13-byte input report with a report ID and an extra Slider
+> axis), and **this driver will not detect the wheel** - it expects the plain
+> Microsoft `input.inf` stack.
+
+Check and remove them from an elevated prompt:
+
+```powershell
+pnputil /enum-drivers                 # find Logitech oem*.inf (provider Logitech, WingMan/WmXxx)
+pnputil /delete-driver oemNN.inf /uninstall   # for each matching package
+```
+
+Then unplug and replug the wheel. `pnputil /enum-devices /instanceid "<G25 id>" /stack`
+should show only `HidUsb` / `hidgamepad` (Microsoft `input.inf`), no `Wm*`
+filter. `g25tool info` should then report an **8/8/0** byte input/output/feature
+buffer. See [docs/validation.md](docs/validation.md) for a full before/after.
+
+(This is separate from **G HUB**, which is fine to keep for other devices - see
+[docs/ghub-coexistence.md](docs/ghub-coexistence.md).)
+
 ## AI Assistance Notice
 
 This project was developed with substantial AI assistance. The code and
