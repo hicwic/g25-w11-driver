@@ -25,6 +25,7 @@ std::wstring status = L"Starting...";
 std::wstring applied_path;
 std::wstring pending_path;
 int applied_rotation{};
+bool g25_present{};   // a physical G25 was enumerable at the last check (hidden by HidHide in G29 mode)
 enum class ApplyResult { complete, retry, retry_slow };
 
 void add_icon(HWND window) {
@@ -47,6 +48,7 @@ ApplyResult apply_to_wheel() {
         const auto found = std::find_if(devices.begin(), devices.end(), [](const DeviceInfo& info) {
             return info.vid == logitech_vid && identify_model(info.pid, info.revision) == Model::g25;
         });
+        g25_present = found != devices.end();
         if (found == devices.end()) {
             // While G29 mode is on, the bridge hides the physical G25 from other
             // processes (HidHide), so not seeing it here is normally expected -
@@ -144,8 +146,13 @@ void show_menu(HWND window) {
     }
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(rotation_menu), L"Maximum rotation");
 
-    if (vg29_installed)
-        AppendMenuW(menu, MF_STRING | (vg29_on ? MF_CHECKED : 0), cmd_vg29_toggle, L"G29 Mode");
+    if (vg29_installed) {
+        // Starting G29 mode without a G25 just churns the service (worker can't
+        // find the wheel, gives up after retries). Block it until one is plugged.
+        const bool blocked = !vg29_on && !g25_present;
+        AppendMenuW(menu, MF_STRING | (vg29_on ? MF_CHECKED : 0) | (blocked ? MF_GRAYED : 0),
+                    cmd_vg29_toggle, blocked ? L"G29 Mode (connect the G25 first)" : L"G29 Mode");
+    }
 
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, cmd_exit, L"Exit");
@@ -194,8 +201,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             const auto st = vg29::status();
             if (st.run == vg29::RunState::running || st.run == vg29::RunState::starting)
                 vg29::stop();
-            else
+            else if (g25_present)
                 vg29::start();
+            else
+                status = L"Connect the G25 before enabling G29 mode";
             // The wheel comes and goes as the bridge cloaks/uncloaks it; refresh
             // the status line even if no device broadcast arrives.
             SetTimer(window, timer_id, 2000, nullptr);

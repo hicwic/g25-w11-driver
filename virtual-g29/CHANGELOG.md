@@ -30,6 +30,13 @@ setting (Forza Horizon, Wreckfest, BeamNG).
 - Tray status lines simplified: `G25 ready - <deg>`, `G25 in use - <deg>`,
   `G29 mode active - <deg>` (no more "restart it for", "applying", "G25 hidden").
 
+### Fixed - G29 mode could be enabled with no G25 connected (2026-09-09)
+
+The tray let you tick "G29 Mode" with the wheel unplugged; the service then
+churned (worker can't find the G25, gives up after retries) without ever saying
+why. The "G29 Mode" item is now greyed - "G29 Mode (connect the G25 first)" -
+until a G25 is enumerable.
+
 ## [0.2.1] - 2026-09-08
 
 Local-game force feedback via the virtual G29, Forza Horizon 4 support, the
