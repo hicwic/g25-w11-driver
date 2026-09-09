@@ -36,7 +36,7 @@ if(G25_BUILD_DIRECTINPUT)
     src/device/hid_transport.cpp
     src/device/g25_device.cpp)
   target_compile_definitions(g25ff PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00)
-  target_link_libraries(g25ff PRIVATE g25_protocol g25_effect_math hid setupapi ole32 dinput8 dxguid g25_warnings)
+  target_link_libraries(g25ff PRIVATE g25_protocol g25_effect_math hid setupapi advapi32 ole32 dinput8 dxguid g25_warnings)
   set_target_properties(g25ff PROPERTIES PREFIX "" OUTPUT_NAME "g25ff")
   if(MINGW)
     target_link_options(g25ff PRIVATE -static)

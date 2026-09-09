@@ -58,7 +58,7 @@ ApplyResult apply_to_wheel() {
                 if (up) {
                     if (vs.wheel_lost) status = L"G29 mode - G25 disconnected";
                     else if (vs.wheel_range > 0 && vs.wheel_range != settings.rotation)
-                        status = L"G29 mode active - restart it for " + std::to_wstring(settings.rotation) + L" deg";
+                        status = L"G29 mode active - applying " + std::to_wstring(settings.rotation) + L" deg";
                     else status = L"G29 mode active (G25 hidden)";
                 }
             }
@@ -84,12 +84,12 @@ ApplyResult apply_to_wheel() {
             pending_path.clear();
             return ApplyResult::complete;
         }
-        // A game (its g25ff.dll) or the bridge holds the wheel. Do NOT write -
-        // sending SET_RANGE / STOP_ALL / F5 mid-session yanks the wheel off
-        // centre. Leave it alone; re-apply once the game exits.
+        // A game (its g25ff.dll) or the bridge holds the wheel. Do NOT write from
+        // here - sending SET_RANGE / STOP_ALL / F5 mid-session yanks the wheel
+        // off centre. The holder watches HKCU\Software\g25-driver and applies the
+        // new range live (SET_RANGE only); we just reconcile once the game exits.
         if (!WriterLock::available()) {
-            status = L"G25 in use - " + std::to_wstring(settings.rotation)
-                     + L" deg applies when the game exits";
+            status = L"G25 in use - applying " + std::to_wstring(settings.rotation) + L" deg";
             pending_path.clear();
             return ApplyResult::retry_slow;
         }
@@ -188,9 +188,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             pending_path = applied_path;
             (void)write_user_settings(settings);
             apply_or_retry(window);
-            // G29 mode: the bridge reads this setting at (re)start. Do NOT bounce
-            // the service here - that drops the virtual G29 mid-game. The new
-            // range applies the next time G29 mode starts.
+            // When a game holds the wheel we don't (and mustn't) write here: the
+            // holder - g25ff.dll locally, or the bridge worker in G29 mode -
+            // watches this registry value and applies SET_RANGE live. Do NOT
+            // bounce the g25vg29 service; that drops the virtual G29 mid-game.
         } else if (command == cmd_vg29_toggle) {
             const auto st = vg29::status();
             if (st.run == vg29::RunState::running || st.run == vg29::RunState::starting)

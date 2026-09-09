@@ -39,7 +39,9 @@ Physical G25 (046D:C299)                          Virtual G29 (046D:C24F)
   to it. Both land on `OutputReceived`.
 - `G25ForceFeedbackRelay` forwards those to the physical G25. At startup it also
   sends `F3` / `F5` / SET_RANGE (the bring-up G HUB used to do); the range is
-  the tray's "Maximum rotation" setting.
+  the tray's "Maximum rotation" setting. Changing that setting mid-game is
+  applied live: the worker watches `HKEY_USERS\<sid>\Software\g25-driver`
+  (the service passes the SID via `--user-sid`) and sends a bare SET_RANGE.
 
 The G25 stays hidden from local games (HidHide), so they bind the virtual G29
 and its FFB flows back through the relay - no whitelisting of game executables.

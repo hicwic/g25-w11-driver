@@ -68,6 +68,21 @@ sealed class G25ForceFeedbackRelay : IDisposable
         }
     }
 
+    /// <summary>
+    /// Apply a new steering range mid-session (SET_RANGE only - no stop-forces /
+    /// autocenter reset, so the wheel stays centred and forces keep flowing).
+    /// Queued on the same writer thread as the FFB reports.
+    /// </summary>
+    public void SetRange(int degrees)
+    {
+        if (_failure != null) return;
+        var range = Libg25.SetRange(degrees);
+        if (range == null) return;
+        _commands.TryAdd(range);
+        // Matches the service's "Wheel range: N deg" parser -> BridgeStatus.WheelRange.
+        Console.WriteLine($"Wheel range: {degrees} deg");
+    }
+
     private static HidStream? TryAcquireStream()
     {
         foreach (var device in DeviceList.Local.GetHidDevices(LogitechVendorId, G25NativeProductId))
