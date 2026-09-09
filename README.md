@@ -39,17 +39,35 @@ driver and a Windows service); the core driver above stays pure per-user. See
 > axis), and **this driver will not detect the wheel** - it expects the plain
 > Microsoft `input.inf` stack.
 
-Check and remove them from an elevated prompt:
+### Removing it - the beginner (GUI) way
+
+1. **Settings -> Apps -> Installed apps** (or Control Panel -> Programs). Uninstall
+   anything Logitech that is **not** G HUB: *Logitech Gaming Software*,
+   *Logitech Profiler*, *Logitech WingMan*. **Reboot.**
+2. Plug in the wheel. Open **Device Manager** (right-click Start -> Device Manager).
+   Menu **View -> Show hidden devices**.
+3. Under **Human Interface Devices** and **Sound, video and game controllers**,
+   for every Logitech wheel entry (including greyed-out / hidden ones):
+   right-click -> **Uninstall device** -> tick **"Delete the driver software for
+   this device"** / "Attempt to remove the driver" -> OK.
+4. **Unplug and replug** the wheel (or reboot). It should come back as a plain
+   **HID-compliant game controller**, driver provider **Microsoft**.
+
+Verify: in Device Manager the wheel's **Driver -> Driver Details** should list
+Microsoft `hidusb.sys` / `hidclass.sys`, not any `Wm*` file. `g25tool info`
+should report an **8/8/0** byte input/output/feature buffer.
+
+### If the wheel keeps coming back on the old driver
+
+The `oem*.inf` package is still in the Windows driver store. Remove it from an
+**elevated** prompt, then replug:
 
 ```powershell
-pnputil /enum-drivers                 # find Logitech oem*.inf (provider Logitech, WingMan/WmXxx)
+pnputil /enum-drivers                 # find the Logitech oem*.inf (provider Logitech, WingMan/WmXxx)
 pnputil /delete-driver oemNN.inf /uninstall   # for each matching package
 ```
 
-Then unplug and replug the wheel. `pnputil /enum-devices /instanceid "<G25 id>" /stack`
-should show only `HidUsb` / `hidgamepad` (Microsoft `input.inf`), no `Wm*`
-filter. `g25tool info` should then report an **8/8/0** byte input/output/feature
-buffer. See [docs/validation.md](docs/validation.md) for a full before/after.
+See [docs/validation.md](docs/validation.md) for a full before/after.
 
 (This is separate from **G HUB**, which is fine to keep for other devices - see
 [docs/ghub-coexistence.md](docs/ghub-coexistence.md).)
