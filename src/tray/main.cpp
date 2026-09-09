@@ -45,8 +45,9 @@ void add_icon(HWND window) {
 ApplyResult apply_to_wheel() {
     try {
         const auto devices = enumerate_wheels();
-        const auto found = std::find_if(devices.begin(), devices.end(), [](const DeviceInfo& info) {
-            return info.vid == logitech_vid && identify_model(info.pid, info.revision) == Model::g25;
+        const auto is_classic = [](Model m) { return m == Model::g25 || m == Model::g27; };
+        const auto found = std::find_if(devices.begin(), devices.end(), [&](const DeviceInfo& info) {
+            return info.vid == logitech_vid && is_classic(identify_model(info.pid, info.revision));
         });
         g25_present = found != devices.end();
         if (found == devices.end()) {
@@ -67,20 +68,23 @@ ApplyResult apply_to_wheel() {
             applied_rotation = 0;
             return ApplyResult::complete;
         }
-        if (found->pid != g25_pid) {
+        const Model model = identify_model(found->pid, found->revision);
+        const std::uint16_t native_pid = model == Model::g27 ? g27_pid : g25_pid;
+        const std::wstring label = model == Model::g27 ? L"G27" : L"G25";
+        if (found->pid != native_pid) {
             require_g25_writer(*found, true);
             WriterLock lock;
             HidTransport transport(*found, Access::write);
             transport.send(stop_all());
             transport.send(disable_autocenter());
-            transport.send(native_mode());
-            status = L"Switching to G25 mode...";
+            transport.send(native_mode(model));
+            status = L"Switching to " + label + L" native mode...";
             applied_path.clear();
             pending_path.clear();
             return ApplyResult::retry;
         }
         if (applied_path == found->path && applied_rotation == settings.rotation) {
-            status = L"G25 ready - " + std::to_wstring(settings.rotation) + L" deg";
+            status = label + L" ready - " + std::to_wstring(settings.rotation) + L" deg";
             pending_path.clear();
             return ApplyResult::complete;
         }
@@ -95,7 +99,7 @@ ApplyResult apply_to_wheel() {
         }
         if (pending_path != found->path) {
             pending_path = found->path;
-            status = L"Waiting for G25 calibration...";
+            status = L"Waiting for " + label + L" calibration...";
             return ApplyResult::retry;
         }
         require_g25_writer(*found, false);
@@ -107,7 +111,7 @@ ApplyResult apply_to_wheel() {
         applied_path = found->path;
         pending_path.clear();
         applied_rotation = settings.rotation;
-        status = L"G25 ready - " + std::to_wstring(settings.rotation) + L" deg";
+        status = label + L" ready - " + std::to_wstring(settings.rotation) + L" deg";
         return ApplyResult::complete;
     } catch (...) {
         status = L"G25 busy - retrying";

@@ -1,7 +1,8 @@
 # g25-driver
 
 Use a **Logitech G25** racing wheel on **Windows 11** - without the old Logitech
-software, and without changing any Windows security setting.
+software, and without changing any Windows security setting. A **G27** works
+too, though that part is new and still being tested.
 
 The G25 is from 2006. Windows 11 sees it as a generic controller: the steering
 range is wrong and most games get no force feedback. The old Logitech driver that

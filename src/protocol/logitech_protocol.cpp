@@ -33,11 +33,17 @@ std::string mode_name(std::uint16_t pid) {
     case dfex_pid: return "Driving Force / Formula EX";
     case dfp_pid: return "Driving Force Pro";
     case g25_pid: return "G25 native layout";
-    case g27_pid: return "G27 (diagnostic only)";
+    case g27_pid: return "G27 native layout";
     default: return "unknown";
     }
 }
-Command native_mode() { return {0xf8, 0x10, 0, 0, 0, 0, 0}; }
+// EXT_CMD16 puts a G25 (or a G27) into G25 mode; EXT_CMD9 subcommand 0x04 puts a
+// G27 into its own native mode. Bytes from Kethen/lg4ff_userspace switch_mode.c
+// and new-lg4ff lg4ff_mode_switch_ext09_g27 / _ext16_g25.
+Command native_mode(Model model) {
+    if (model == Model::g27) return {0xf8, 0x09, 0x04, 0x01, 0, 0, 0};
+    return {0xf8, 0x10, 0, 0, 0, 0, 0};
+}
 Command set_range(int degrees) {
     require_supported_range(degrees);
     return {0xf8, 0x81, static_cast<std::uint8_t>(degrees & 0xff),
@@ -61,24 +67,31 @@ std::string hex_bytes(std::span<const std::uint8_t> bytes) {
     }
     return out.str();
 }
-InputState decode_native_payload(std::span<const std::uint8_t> p) {
-    if (p.size() != 11) throw std::invalid_argument("native G25 payload must contain exactly 11 bytes");
+InputState decode_native_payload(std::span<const std::uint8_t> p, Model model) {
+    if (p.size() != 11) throw std::invalid_argument("native payload must contain exactly 11 bytes");
     InputState state;
     state.hat = p[0] & 0x0f;
     const auto packed = static_cast<std::uint32_t>(p[0]) |
         (static_cast<std::uint32_t>(p[1]) << 8) | (static_cast<std::uint32_t>(p[2]) << 16) |
         (static_cast<std::uint32_t>(p[3]) << 24);
-    state.buttons = (packed >> 4) & 0x7ffff;
-    state.vendor_bits = static_cast<std::uint8_t>((packed >> 23) & 7);
+    if (model == Model::g27) {
+        // 22 buttons at report bit 4, button 23 at report bit 80 (p[10] bit 0).
+        state.buttons = ((packed >> 4) & 0x3fffffu) | (static_cast<std::uint32_t>(p[10] & 0x01u) << 22);
+    } else {
+        // 19 buttons at report bit 4, then 3 vendor bits.
+        state.buttons = (packed >> 4) & 0x7ffffu;
+        state.vendor_bits = static_cast<std::uint8_t>((packed >> 23) & 7);
+    }
+    // Wheel (14-bit at report bit 26) and pedals (bytes 5..7) are identical.
     state.wheel = static_cast<std::uint16_t>((p[3] >> 2) | (static_cast<unsigned>(p[4]) << 6));
     state.throttle = p[5]; state.brake = p[6]; state.clutch = p[7];
     state.vendor_bytes = {p[8], p[9], p[10]};
     return state;
 }
-InputState decode_windows_input(std::span<const std::uint8_t> report) {
+InputState decode_windows_input(std::span<const std::uint8_t> report, Model model) {
     if (report.size() != 12 || report[0] != 0)
-        throw std::invalid_argument("expected 12-byte Windows G25 input with Report ID 0");
-    return decode_native_payload(report.subspan(1));
+        throw std::invalid_argument("expected 12-byte Windows input with Report ID 0");
+    return decode_native_payload(report.subspan(1), model);
 }
 double InputState::angle(int assumed_range) const {
     require_supported_range(assumed_range);

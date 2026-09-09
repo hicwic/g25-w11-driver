@@ -43,13 +43,15 @@ typedef struct g25_input_state {
 LIBG25_API int32_t g25_identify_model(uint16_t pid, uint16_t revision);
 
 /* Decode a Windows HID input report: 12 bytes, report id 0 + 11-byte payload.
- * Returns 0 on success, -1 on bad input. */
+ * `model` is a g25_model value; G25_MODEL_G27 reads the wider G27 button field,
+ * anything else uses the G25 layout. Returns 0 on success, -1 on bad input. */
 LIBG25_API int32_t g25_decode_input(const uint8_t *report, int32_t len,
-                                    g25_input_state *out);
+                                    int32_t model, g25_input_state *out);
 
 /* Wheel commands. Each writes an 8-byte Windows HID output report into out8
- * (leading 0x00 report id + 7 command bytes). */
-LIBG25_API void g25_cmd_native_mode(uint8_t *out8);
+ * (leading 0x00 report id + 7 command bytes). g25_cmd_native_mode takes a
+ * g25_model so a G27 gets its native-mode switch, not the G25 one. */
+LIBG25_API void g25_cmd_native_mode(int32_t model, uint8_t *out8);
 LIBG25_API void g25_cmd_stop_all(uint8_t *out8);
 LIBG25_API void g25_cmd_disable_autocenter(uint8_t *out8);
 /* degrees 40..900. Returns 0 on success, -1 out of range. */
