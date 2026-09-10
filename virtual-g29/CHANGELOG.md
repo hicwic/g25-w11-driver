@@ -7,6 +7,11 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-10
+
+Tray "Maximum rotation" now applies live while a game runs - locally and in
+G29 mode - plus a robustness pass from a full code review.
+
 ### Changed - "Maximum rotation" now changes live during a game (2026-09-09)
 
 Changing the tray's **Maximum rotation** used to be either impossible while a
