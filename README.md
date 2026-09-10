@@ -80,29 +80,16 @@ See [docs/validation.md](docs/validation.md) for a full before/after.
 [docs/ghub-coexistence.md](docs/ghub-coexistence.md).)
 ## If you use Logitech G HUB
 
-G HUB is not the software this replaces, and you can keep it for a mouse,
-keyboard or headset. But it does get in the way of the wheel.
-
-When you plug the G25 in, it first appears to Windows as a different Logitech
-wheel for a moment. G HUB installs a driver that grabs it during exactly that
-moment - before this driver can set it up. The wheel then stops responding
-completely: no steering, no force feedback, and this driver cannot even see it.
-Closing or pausing G HUB does **not** help, because the driver acts on its own.
-
-The fix is to remove that one G HUB driver. It only covers wheels you do not own
-(G920, G923, G29 for PlayStation) and some microphones, so removing it costs you
-nothing. Run this **as administrator**, from where the driver is installed:
-
-```powershell
-scripts\Block-GHubWinUsb.ps1
-```
-
-It pauses G HUB, removes the driver, replugs the wheel for you, switches it to
-G25 mode and starts G HUB again.
-
-⚠️ **A G HUB update puts that driver back.** If the wheel goes quiet after G HUB
-updates itself, run the script again. Full details in
-[docs/ghub-coexistence.md](docs/ghub-coexistence.md).
+> ⚠️ **G HUB stops this driver from finding the wheel.** It installs a driver of
+> its own that claims the G25 the instant you plug it in, and closing or pausing
+> G HUB does not help. The wheel then does nothing at all.
+>
+> If G HUB is only there for the wheel, uninstall it. If you need it for a mouse,
+> keyboard or headset, keep it and remove just that one driver: run
+> `scripts\Block-GHubWinUsb.ps1` **as administrator** from the install folder.
+> A G HUB update puts it back, so you may have to run it again.
+>
+> Why, and what the script does: [docs/ghub-coexistence.md](docs/ghub-coexistence.md).
 
 ## Step 2 - install
 
