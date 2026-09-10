@@ -33,13 +33,17 @@ software this replaces.
 
 > **The old Logitech software for the G25 must be removed *completely*, driver
 > included.** That is *Logitech Gaming Software*, *Logitech Profiler* or
-> *WingMan* - anything from before G HUB, the kind that asks you to disable
-> Windows driver-signature enforcement. **Uninstalling the app is not enough.**
+> *WingMan* - anything Logitech from before G HUB, including the versions that
+> ask you to turn off a Windows security check in order to install.
+> **Uninstalling the app is not enough.**
 
-Uninstalling only the app leaves Logitech's WingMan filter drivers (`WmHidLo`,
-`WmFilter`, from `oem*.inf` packages such as `WmJoyHid` / `WmVirHid` / `WmBEnum`)
-in the Windows driver store. They stay attached to the G25 and keep it on the old
-descriptor, so this driver will not see the wheel.
+Removing the app leaves the driver itself behind, tucked away inside Windows
+where you will not see it. It stays attached to your wheel and keeps it in the
+old format, so this driver never finds it. The steps below get rid of it.
+
+(For the curious: the leftovers are Logitech's WingMan filter drivers - `WmHidLo`
+on the USB stack, `WmFilter` on the HID stack - from `oem*.inf` packages such as
+`WmJoyHid` / `WmVirHid` / `WmBEnum`.)
 
 ### Removing it - the beginner (GUI) way
 
@@ -85,10 +89,9 @@ See [docs/validation.md](docs/validation.md) for a full before/after.
 
 Want GeForce NOW, or a game that refuses the G25, to accept it? Also run
 `g25-virtual-g29-<version>-setup.exe` from the same page. That one **does** need
-administrator rights: it installs a virtual wheel driver and a Windows service,
-and adds a certificate to your PC's trusted list so Windows accepts that virtual
-wheel. Secure Boot and Memory Integrity stay switched on. It is entirely
-optional - the wheel works in local games without it.
+administrator rights, because it installs a driver: Windows will pop up a
+permission box when it starts. It does not switch off any Windows protection.
+It is entirely optional - the wheel works in local games without it.
 
 To uninstall: **Settings -> Apps -> Installed apps -> G25 Windows 11 Driver**.
 
