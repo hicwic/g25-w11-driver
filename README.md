@@ -26,8 +26,9 @@ fixed that no longer installs cleanly on Windows 11. This replaces it.
 That last point is the one people get wrong: if the old driver is still there,
 the wheel will not be detected at all.
 
-**Logitech G HUB can stay** if you use it for a mouse or keyboard. It is not the
-software this replaces.
+**Logitech G HUB** is a different thing and you can keep it - but it gets in the
+way of the wheel and needs one extra step. See
+[If you use Logitech G HUB](#if-you-use-logitech-g-hub) below.
 
 ## Step 1 - remove the old Logitech software
 
@@ -77,6 +78,32 @@ See [docs/validation.md](docs/validation.md) for a full before/after.
 
 (This is separate from **G HUB**, which is fine to keep for other devices - see
 [docs/ghub-coexistence.md](docs/ghub-coexistence.md).)
+## If you use Logitech G HUB
+
+G HUB is not the software this replaces, and you can keep it for a mouse,
+keyboard or headset. But it does get in the way of the wheel.
+
+When you plug the G25 in, it first appears to Windows as a different Logitech
+wheel for a moment. G HUB installs a driver that grabs it during exactly that
+moment - before this driver can set it up. The wheel then stops responding
+completely: no steering, no force feedback, and this driver cannot even see it.
+Closing or pausing G HUB does **not** help, because the driver acts on its own.
+
+The fix is to remove that one G HUB driver. It only covers wheels you do not own
+(G920, G923, G29 for PlayStation) and some microphones, so removing it costs you
+nothing. Run this **as administrator**, from where the driver is installed:
+
+```powershell
+scripts\Block-GHubWinUsb.ps1
+```
+
+It pauses G HUB, removes the driver, replugs the wheel for you, switches it to
+G25 mode and starts G HUB again.
+
+⚠️ **A G HUB update puts that driver back.** If the wheel goes quiet after G HUB
+updates itself, run the script again. Full details in
+[docs/ghub-coexistence.md](docs/ghub-coexistence.md).
+
 ## Step 2 - install
 
 1. Download `g25-w11-driver-<version>-setup.exe` from the

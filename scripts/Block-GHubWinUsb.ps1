@@ -12,7 +12,18 @@
 # Run elevated.
 
 $ErrorActionPreference = 'Continue'
-$g25tool = 'C:\Users\steve\Documents\Project\g25-driver\build\portable-release\g25tool.exe'
+
+# Find g25tool: next to this script in an install, then the default per-user
+# install, then a local build tree. Without it the driver work below still runs;
+# only the "switch to native mode" step is skipped.
+$g25tool = @(
+    (Join-Path $PSScriptRoot '..\bin\x64\g25tool.exe')
+    (Join-Path $env:LOCALAPPDATA 'g25ff\bin\x64\g25tool.exe')
+    (Join-Path $PSScriptRoot '..\build\portable-release\g25tool.exe')
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $g25tool) {
+    Write-Warning 'g25tool.exe not found - the wheel will not be switched to G25 mode automatically.'
+}
 
 Write-Host "[1] Pause G HUB"
 Get-Service LGHUBUpdaterService -EA SilentlyContinue | Stop-Service -Force -EA SilentlyContinue
@@ -45,16 +56,20 @@ Get-PnpDevice | Where-Object { $_.InstanceId -match 'VID_046D&PID_C29(9|4)' } | 
 }
 
 Write-Host "`n[5] Switch to native mode"
-& $g25tool list
-& $g25tool native
-Start-Sleep 3
-& $g25tool list
+if ($g25tool) {
+    & $g25tool list
+    & $g25tool native
+    Start-Sleep 3
+    & $g25tool list
+} else {
+    Write-Host '    skipped (g25tool.exe not found); replug the wheel and let G25 Control do it.'
+}
 
 Write-Host "`n[6] Restart G HUB"
 Start-Service LGHUBUpdaterService -EA SilentlyContinue
 Start-Sleep 3
 Write-Host "    Final:"
-& $g25tool list
+if ($g25tool) { & $g25tool list }
 Get-PnpDevice | Where-Object { $_.InstanceId -match 'VID_046D&PID_C299' } | Select-Object Status,InstanceId | Format-Table -Auto
 
 Read-Host "Press Enter to close"

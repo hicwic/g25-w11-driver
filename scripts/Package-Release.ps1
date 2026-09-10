@@ -57,6 +57,7 @@ Copy-Item -LiteralPath $g25tray -Destination (Join-Path $packageRoot 'bin\g25tra
 Copy-Item -LiteralPath $g25ff32 -Destination (Join-Path $packageRoot 'bin\x86\g25ff.dll')
 Copy-Item -LiteralPath $g25tool32 -Destination (Join-Path $packageRoot 'bin\x86\g25tool.exe')
 Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\Register-G25FF.ps1') -Destination (Join-Path $packageRoot 'scripts\Register-G25FF.ps1')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\Block-GHubWinUsb.ps1') -Destination (Join-Path $packageRoot 'scripts\Block-GHubWinUsb.ps1')
 Copy-Item -LiteralPath (Join-Path $repoRoot 'README.md') -Destination (Join-Path $packageRoot 'README.md')
 Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $packageRoot 'LICENSE')
 Copy-Item -LiteralPath (Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $packageRoot 'THIRD_PARTY_NOTICES.md')

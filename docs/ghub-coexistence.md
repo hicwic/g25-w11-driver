@@ -39,8 +39,8 @@ on its own.
 Remove `logi_win_usb.inf` from the driver store:
 
 ```powershell
-# elevated
-tools\ghub-uninstall\block-ghub-winusb.ps1
+# elevated, from the install folder (%LOCALAPPDATA%\g25ff)
+scripts\Block-GHubWinUsb.ps1
 ```
 
 It stops G HUB, `pnputil /delete-driver`s the `logi_win_usb.inf` package,
@@ -59,7 +59,7 @@ Once the G25 is native (`C299`), G HUB ignores it.
 A G HUB update reinstalls `logi_win_usb.inf`. Options, roughly in order of
 effort:
 
-1. **Manual:** re-run `block-ghub-winusb.ps1` after a G HUB update. Fine for a
+1. **Manual:** re-run `Block-GHubWinUsb.ps1` after a G HUB update. Fine for a
    single test machine.
 2. **Scheduled task** (installer sets it up, runs elevated): on logon and on a
    G HUB install/update, delete `logi_win_usb.inf` if present and re-switch the
