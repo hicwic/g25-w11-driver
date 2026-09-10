@@ -1,57 +1,111 @@
-# g25-userspace
+# g25-driver
 
-Open source **C++20 / CMake** prototype for using a Logitech G25 on Windows 11
-through the standard Microsoft HID stack. License: GPL-2.0-only.
+Use a **Logitech G25** racing wheel on **Windows 11** - without the old Logitech
+software, and without changing any Windows security setting.
 
-The project provides:
+The G25 is from 2006. Windows 11 sees it as a generic controller: the steering
+range is wrong and most games get no force feedback. The old Logitech driver that
+fixed that no longer installs cleanly on Windows 11. This replaces it.
 
-- `g25tool.exe`, a diagnostic and low-level control CLI.
-- `g25ff.dll`, a per-user DirectInput force feedback effect driver, built for
-  x64 and x86 games.
-- `g25tray.exe`, a notification-area helper that switches the wheel to native
-  G25 mode and applies the preferred steering range.
-- An **optional** [Virtual G29 bridge](virtual-g29/README.md) that presents the
-  G25 as a virtual Logitech G29 for software that only accepts a supported wheel
-  from a hard-coded list - GeForce NOW filters the G25 out before the remote
-  game sees it, and some local titles gate features by wheel model.
-- A per-user Windows installer and GitHub Actions release pipeline.
+## What you get
 
-No custom kernel driver, LGS, WinUSB/Zadig setup, Secure Boot change, Memory
-Integrity/HVCI change or driver-signing bypass is required by this prototype.
-The DirectInput integration adds COM/OEM registry keys under the current user;
-the installer backs them up and restores/removes them on uninstall.
+- **Force feedback in games.** The wheel pushes back again.
+- **Your own steering angle** - 180, 360, 540 or 900 degrees, from a small menu
+  next to the clock. You can change it at any time, even mid-race.
+- **Nothing to set up each time.** Plug the wheel in and it is configured for you.
+- **Optional: games that refuse a G25.** Some titles and **GeForce NOW** only
+  accept wheels from a fixed list. A separate component makes your G25 appear as
+  a Logitech G29 so they accept it - see [Virtual G29](virtual-g29/README.md).
 
-The Virtual G29 bridge is a separate opt-in component (it adds a virtual HID
-driver and a Windows service); the core driver above stays pure per-user. See
-[virtual-g29/README.md](virtual-g29/README.md).
+## What you need
 
-## Before you install: remove the legacy Logitech driver
+- Windows 11, 64-bit
+- A Logitech G25
+- **The old Logitech software removed** - see the next section
 
-> **The old Logitech software for the G25 (Logitech Gaming Software / Logitech
-> Profiler / WingMan - anything from before G HUB, the one that needs Windows
-> driver-signature enforcement disabled) must be *completely* removed, driver
-> included.** Uninstalling the app is **not** enough: it leaves the WingMan
-> filter drivers (`WmHidLo` on the USB stack, `WmFilter` on the HID stack, from
-> Logitech `oem*.inf` packages such as `WmJoyHid` / `WmVirHid` / `WmBEnum`) in
-> the Windows driver store. They stay bound to the G25, keep it on the legacy
-> HID descriptor (13-byte input report with a report ID and an extra Slider
-> axis), and **this driver will not detect the wheel** - it expects the plain
-> Microsoft `input.inf` stack.
+That last point is the one people get wrong: if the old driver is still there,
+the wheel will not be detected at all.
 
-Check and remove them from an elevated prompt:
+**Logitech G HUB can stay** if you use it for a mouse or keyboard. It is not the
+software this replaces.
+
+## Step 1 - remove the old Logitech software
+
+> **The old Logitech software for the G25 must be removed *completely*, driver
+> included.** That is *Logitech Gaming Software*, *Logitech Profiler* or
+> *WingMan* - anything from before G HUB, the kind that asks you to disable
+> Windows driver-signature enforcement. **Uninstalling the app is not enough.**
+
+Uninstalling only the app leaves Logitech's WingMan filter drivers (`WmHidLo`,
+`WmFilter`, from `oem*.inf` packages such as `WmJoyHid` / `WmVirHid` / `WmBEnum`)
+in the Windows driver store. They stay attached to the G25 and keep it on the old
+descriptor, so this driver will not see the wheel.
+
+### Removing it - the beginner (GUI) way
+
+1. **Settings -> Apps -> Installed apps** (or Control Panel -> Programs). Uninstall
+   anything Logitech that is **not** G HUB: *Logitech Gaming Software*,
+   *Logitech Profiler*, *Logitech WingMan*. **Reboot.**
+2. Plug in the wheel. Open **Device Manager** (right-click Start -> Device Manager).
+   Menu **View -> Show hidden devices**.
+3. Under **Human Interface Devices** and **Sound, video and game controllers**,
+   for every Logitech wheel entry (including greyed-out / hidden ones):
+   right-click -> **Uninstall device** -> tick **"Delete the driver software for
+   this device"** / "Attempt to remove the driver" -> OK.
+4. **Unplug and replug** the wheel (or reboot). It should come back as a plain
+   **HID-compliant game controller**, driver provider **Microsoft**.
+
+Verify: in Device Manager the wheel's **Driver -> Driver Details** should list
+Microsoft `hidusb.sys` / `hidclass.sys`, not any `Wm*` file. `g25tool info`
+should report an **8/8/0** byte input/output/feature buffer.
+
+### If the wheel keeps coming back on the old driver
+
+The `oem*.inf` package is still in the Windows driver store. Remove it from an
+**elevated** prompt, then replug:
 
 ```powershell
-pnputil /enum-drivers                 # find Logitech oem*.inf (provider Logitech, WingMan/WmXxx)
+pnputil /enum-drivers                 # find the Logitech oem*.inf (provider Logitech, WingMan/WmXxx)
 pnputil /delete-driver oemNN.inf /uninstall   # for each matching package
 ```
 
-Then unplug and replug the wheel. `pnputil /enum-devices /instanceid "<G25 id>" /stack`
-should show only `HidUsb` / `hidgamepad` (Microsoft `input.inf`), no `Wm*`
-filter. `g25tool info` should then report an **8/8/0** byte input/output/feature
-buffer. See [docs/validation.md](docs/validation.md) for a full before/after.
+See [docs/validation.md](docs/validation.md) for a full before/after.
 
 (This is separate from **G HUB**, which is fine to keep for other devices - see
 [docs/ghub-coexistence.md](docs/ghub-coexistence.md).)
+## Step 2 - install
+
+1. Download `g25-w11-driver-<version>-setup.exe` from the
+   [Releases page](https://github.com/hicwic/g25-w11-driver/releases) and run it.
+   It installs for your account only and does **not** ask for administrator rights.
+2. Plug in the wheel. A small **G25 Control** icon appears next to the clock -
+   that is where you pick the steering angle.
+
+**Close your games first**, so the driver file is not in use.
+
+Want GeForce NOW, or a game that refuses the G25, to accept it? Also run
+`g25-virtual-g29-<version>-setup.exe` from the same page. That one **does** need
+administrator rights: it installs a virtual wheel driver and a Windows service,
+and adds a certificate to your PC's trusted list so Windows accepts that virtual
+wheel. Secure Boot and Memory Integrity stay switched on. It is entirely
+optional - the wheel works in local games without it.
+
+To uninstall: **Settings -> Apps -> Installed apps -> G25 Windows 11 Driver**.
+
+## What gets installed
+
+- `g25tray.exe` - the icon next to the clock. Switches the wheel to its native
+  G25 mode, applies your steering range, and toggles the Virtual G29 bridge.
+- `g25ff.dll` - the force feedback driver games talk to, built for both 64-bit
+  and 32-bit games.
+- `g25tool.exe` - a command-line tool for diagnostics (see [CLI Usage](#cli-usage)).
+- Optionally, the [Virtual G29 bridge](virtual-g29/README.md): a virtual HID
+  driver and an on-demand Windows service.
+
+The core driver is **per user**: no kernel driver, no LGS, no WinUSB/Zadig, no
+Secure Boot or Memory Integrity change, no driver-signing bypass. It adds COM and
+OEM registry keys under your own account; the installer backs them up and
+restores them when you uninstall. Open source, **C++20 / CMake**, GPL-2.0-only.
 
 ## AI Assistance Notice
 
@@ -80,28 +134,20 @@ their axes/buttons are still visible to Windows when those accessories are not
 connected. Games that support multiple controllers can bind the G25 wheel and a
 separate USB pedal set independently.
 
-## Windows Installer
+## Installer details
 
-Download the latest `g25-w11-driver-<version>-setup.exe` from GitHub Releases:
+The core installer runs per user into `%LOCALAPPDATA%\g25ff`. It copies the
+x64/x86 DirectInput DLLs, installs `g25tray.exe`, registers the DirectInput FFB
+effects for `VID_046D&PID_C299`, starts G25 Control and adds it to sign-in
+startup.
 
-https://github.com/hicwic/g25-w11-driver/releases
-
-The installer runs per user and installs into `%LOCALAPPDATA%\g25ff`. It copies
-the x64/x86 DirectInput DLLs, installs `g25tray.exe`, registers the DirectInput
-FFB effects for `VID_046D&PID_C299`, starts G25 Control, and adds it to user
-sign-in startup.
-
-Uninstall is available from Windows Settings, Apps, Installed apps,
-**G25 Windows 11 Driver**. It runs the same cleanup path as the script:
+Uninstalling runs the same cleanup path as the script:
 
 - stops `g25tray.exe`
 - removes the startup entry
 - unregisters the x64/x86 COM DirectInput effect driver
 - restores previous per-user OEM/COM keys when a backup existed
 - removes the installed binaries
-
-Close games before installing, updating or uninstalling so `g25ff.dll` is not
-held open by a running process.
 
 ## Building With Visual Studio 2022
 
