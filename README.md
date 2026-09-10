@@ -84,10 +84,20 @@ See [docs/validation.md](docs/validation.md) for a full before/after.
 > its own that claims the G25 the instant you plug it in, and closing or pausing
 > G HUB does not help. The wheel then does nothing at all.
 >
-> If G HUB is only there for the wheel, uninstall it. If you need it for a mouse,
-> keyboard or headset, keep it and remove just that one driver: run
-> `scripts\Block-GHubWinUsb.ps1` **as administrator** from the install folder.
-> A G HUB update puts it back, so you may have to run it again.
+> If G HUB is only there for the wheel, uninstall it - nothing else to do.
+>
+> If you need G HUB for a mouse, keyboard or headset, keep it and remove just
+> that one driver:
+>
+> 1. Right-click the **Start** button, choose **Terminal (Admin)** (on older
+>    Windows: *Windows PowerShell (Admin)*), and accept the permission box.
+> 2. Copy this line, paste it in, press Enter:
+>
+> ```powershell
+> powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\g25ff\scripts\Block-GHubWinUsb.ps1"
+> ```
+>
+> A G HUB update puts the driver back, so you may have to do this again.
 >
 > Why, and what the script does: [docs/ghub-coexistence.md](docs/ghub-coexistence.md).
 

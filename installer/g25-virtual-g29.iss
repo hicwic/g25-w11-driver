@@ -85,6 +85,8 @@ begin
   { Advisory: G HUB's logi_win_usb.inf WinUSB-claims the G25 in compat mode. }
   if (CurStep = ssPostInstall) and DirExists(ExpandConstant('{commonpf}\LGHUB')) then
     MsgBox('Logitech G HUB looks installed. Its WinUSB driver can take over the G25 in compatibility mode and stop the wheel working.'
-      + #13#10#13#10 + 'If the G25 stops responding, run scripts\Block-GHubWinUsb.ps1 as administrator from the g25-driver install folder (details in docs\ghub-coexistence.md).',
+      + #13#10#13#10 + 'If the G25 stops responding, open Terminal (Admin) and run:'
+      + #13#10 + 'powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\g25ff\scripts\Block-GHubWinUsb.ps1"'
+      + #13#10#13#10 + 'Details in docs\ghub-coexistence.md.',
       mbInformation, MB_OK);
 end;

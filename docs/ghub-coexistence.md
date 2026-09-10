@@ -39,8 +39,8 @@ on its own.
 Remove `logi_win_usb.inf` from the driver store:
 
 ```powershell
-# elevated, from the install folder (%LOCALAPPDATA%\g25ff)
-scripts\Block-GHubWinUsb.ps1
+# elevated (Terminal as administrator)
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\g25ff\scripts\Block-GHubWinUsb.ps1"
 ```
 
 It stops G HUB, `pnputil /delete-driver`s the `logi_win_usb.inf` package,
