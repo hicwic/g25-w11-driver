@@ -15,10 +15,12 @@ static class ServiceInstall
     // Grant the interactive user group (IU) START, STOP and QUERY_STATUS on top
     // of the default descriptor so the unprivileged tray can drive the service.
     //  RP = SERVICE_START, WP = SERVICE_STOP, LC = SERVICE_QUERY_STATUS,
-    //  CC = SERVICE_QUERY_CONFIG, RC = READ_CONTROL.
+    //  CC = SERVICE_QUERY_CONFIG, SW = SERVICE_ENUMERATE_DEPENDENTS,
+    //  LO = SERVICE_INTERROGATE, CR = SERVICE_USER_DEFINED_CONTROL,
+    //  RC = READ_CONTROL.
     private const string Sddl =
         "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)" +
-        "(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;RPWPLCRC;;;IU)";
+        "(A;;CCLCSWRPWPLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)";
 
     public static int Install()
     {
@@ -53,8 +55,12 @@ static class ServiceInstall
             CreateNoWindow = true,
         };
         using var p = Process.Start(psi)!;
-        var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+        // Drain both pipes concurrently; reading one to the end while the other
+        // fills its buffer deadlocks the pair.
+        var stdout = p.StandardOutput.ReadToEndAsync();
+        var stderr = p.StandardError.ReadToEndAsync();
         p.WaitForExit();
+        var output = stdout.Result + stderr.Result;
         if (p.ExitCode != 0 && !quiet)
             Console.Error.WriteLine($"sc {arguments.Split(' ')[0]} -> {p.ExitCode}: {output.Trim()}");
         return p.ExitCode;

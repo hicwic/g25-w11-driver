@@ -203,10 +203,10 @@ bool logitech_output_layout(const DeviceInfo& info) {
         return usage && cap.ReportID == 0 && cap.BitSize == 8 && cap.ReportCount == 7;
     });
 }
-HidTransport::HidTransport(const DeviceInfo& expected, Access access)
+HidTransport::HidTransport(const DeviceInfo& expected, Access access, Trace trace)
     : handle_(CreateFileW(expected.path.c_str(), access == Access::read ? GENERIC_READ : GENERIC_WRITE,
                          FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr)),
-      access_(access), info_(expected) {
+      access_(access), trace_(trace), info_(expected) {
     if (!handle_.valid()) {
         const auto error = GetLastError();
         throw std::runtime_error(windows_error("CreateFile " + utf8(expected.path), error));
@@ -239,7 +239,7 @@ std::optional<std::vector<std::uint8_t>> HidTransport::read(HANDLE stop_event, D
 void HidTransport::send(const Command& command) {
     if (access_ != Access::write) throw std::logic_error("transport is not open for output");
     const auto report = windows_output(command);
-    std::clog << "TX [" << hex_bytes(report) << "]\n";
+    if (trace_ == Trace::transmit) std::clog << "TX [" << hex_bytes(report) << "]\n";
     UniqueHandle event(CreateEventW(nullptr, TRUE, FALSE, nullptr));
     if (!event.valid()) throw std::runtime_error(windows_error("CreateEvent(write)", GetLastError()));
     OVERLAPPED operation{}; operation.hEvent = event.get();

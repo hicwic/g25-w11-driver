@@ -2,12 +2,18 @@
 #include "app/console_stop.h"
 #include "device/g25_device.h"
 #include "settings/user_settings.h"
+#include <atomic>
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
 
 namespace {
+// WriterLock's semantics do not depend on which mutex it guards, so the tests
+// use their own name. Running them against the shipping one made the suite fail
+// whenever a game legitimately held the wheel.
+constexpr wchar_t test_mutex[] = L"Local\\g25tool-output-tests";
+constexpr auto fail_fast = std::chrono::milliseconds(0);
 int checks{};
 void check(bool ok, const char* name) {
     ++checks;
@@ -81,15 +87,51 @@ void run() {
           supported_rotation(900), "tray rotation presets");
     check(!supported_rotation(179) && !supported_rotation(901), "reject unsupported tray rotations");
     {
-        WriterLock lock;
+        WriterLock lock(test_mutex, fail_fast);
         // A mutex is recursive in its owning thread: contention must be tested
         // from another thread, as it would be from another CLI process.
         bool blocked = false;
         std::thread contender([&] {
-            try { WriterLock other; } catch (const std::exception&) { blocked = true; }
+            try { WriterLock other(test_mutex, fail_fast); } catch (const std::exception&) { blocked = true; }
         });
         contender.join();
         check(blocked, "concurrent writers are refused");
+    }
+    {
+        // g25ff.dll claims the wheel for a whole game session, so it waits for the
+        // current writer instead of failing fast the way the CLI and tray do.
+        std::atomic<bool> holding{false};
+        std::thread holder([&] {
+            WriterLock held(test_mutex, std::chrono::milliseconds(5000));
+            holding = true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(80));
+        });
+        while (!holding) std::this_thread::yield();
+        const auto start = std::chrono::steady_clock::now();
+        bool acquired = false;
+        try { WriterLock waited(test_mutex, std::chrono::milliseconds(5000)); acquired = true; }
+        catch (const std::exception&) {}
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        holder.join();
+        check(acquired, "timeout constructor waits for the current writer");
+        check(elapsed >= std::chrono::milliseconds(40), "timeout constructor really blocked");
+    }
+    {
+        // ...but it still gives up rather than hanging when the wheel stays busy.
+        std::atomic<bool> holding{false};
+        std::atomic<bool> release{false};
+        std::thread holder([&] {
+            WriterLock held(test_mutex, std::chrono::milliseconds(5000));
+            holding = true;
+            while (!release) std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        });
+        while (!holding) std::this_thread::yield();
+        bool refused = false;
+        try { WriterLock waited(test_mutex, std::chrono::milliseconds(30)); }
+        catch (const std::exception&) { refused = true; }
+        release = true;
+        holder.join();
+        check(refused, "timeout constructor gives up when the wheel stays busy");
     }
     {
         ConsoleStop stop;

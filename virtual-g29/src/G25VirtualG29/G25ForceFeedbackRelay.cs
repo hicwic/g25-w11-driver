@@ -68,6 +68,20 @@ sealed class G25ForceFeedbackRelay : IDisposable
         }
     }
 
+    /// <summary>
+    /// Apply a new steering range mid-session (SET_RANGE only - no stop-forces /
+    /// autocenter reset, so the wheel stays centred and forces keep flowing).
+    /// Queued on the same writer thread as the FFB reports.
+    /// </summary>
+    public void SetRange(int degrees)
+    {
+        if (_failure != null) return;
+        var range = Libg25.SetRange(degrees);
+        if (range == null) return;
+        _commands.TryAdd(range);
+        Console.WriteLine($"Wheel range: {degrees} deg");
+    }
+
     private static HidStream? TryAcquireStream()
     {
         foreach (var device in DeviceList.Local.GetHidDevices(LogitechVendorId, G25NativeProductId))
@@ -138,6 +152,13 @@ sealed class G25ForceFeedbackRelay : IDisposable
                 Console.Error.WriteLine($"Force feedback relay stopped: {ex.Message}");
                 return;
             }
+            catch
+            {
+                // Stopping: Dispose is closing the stream under us. Letting this
+                // escape would kill the process - the filter above will not catch
+                // it once _stopping is set.
+                return;
+            }
         }
     }
 
@@ -145,12 +166,21 @@ sealed class G25ForceFeedbackRelay : IDisposable
     {
         _stopping = true;
         _commands.CompleteAdding();
-        _writer.Join(1000);
+        var stopped = _writer.Join(1000);
 
         try
         {
-            _stream.Write(Libg25.StopAll());
-            _stream.Write(Libg25.DisableAutocenter());
+            // Only safe once the writer thread has left - two threads writing the
+            // same HID endpoint would interleave reports.
+            if (stopped)
+            {
+                _stream.Write(Libg25.StopAll());
+                _stream.Write(Libg25.DisableAutocenter());
+            }
+            else
+            {
+                Console.Error.WriteLine("Force feedback writer did not stop in 1s; skipping the shutdown reset.");
+            }
         }
         catch (Exception ex)
         {
@@ -158,7 +188,8 @@ sealed class G25ForceFeedbackRelay : IDisposable
         }
 
         _stream.Dispose();
-        _commands.Dispose();
+        // The writer thread drains this; only release it once it has really left.
+        if (stopped) _commands.Dispose();
         if (_dropped != 0) Console.Error.WriteLine($"Dropped force feedback reports: {_dropped}");
         if (_failure != null) Console.Error.WriteLine("Force feedback relay ended with an I/O error.");
     }

@@ -155,6 +155,13 @@ sealed class G25Source : IDisposable
                 _frameReady.Set();
                 return;
             }
+            catch
+            {
+                // Stopping: Dispose is tearing the stream and events down under
+                // us. Letting this escape would kill the process, because the
+                // filter above deliberately does not catch it.
+                return;
+            }
         }
     }
 
@@ -162,9 +169,9 @@ sealed class G25Source : IDisposable
     {
         _stopping = true;
         _frameReady.Set();   // wake a waiting submit loop so it can see _stopping
-        _reader.Join(500);
+        var stopped = _reader.Join(500);
         _stream.Dispose();
-        _firstFrame.Dispose();
-        _frameReady.Dispose();
+        // The reader signals these; only release them once it has really left.
+        if (stopped) { _firstFrame.Dispose(); _frameReady.Dispose(); }
     }
 }

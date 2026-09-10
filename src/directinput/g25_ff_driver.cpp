@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cwctype>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -106,9 +107,78 @@ private:
     std::vector<std::uint8_t> report_;
 };
 
+// Watches HKCU\Software\g25-driver "Rotation" while a game holds the wheel, so a
+// change to the tray's "Maximum rotation" is applied live (SET_RANGE only)
+// instead of waiting for the game to exit. One thread, blocked in
+// RegNotifyChangeKeyValue - no polling. Only used on the physical-G25 path; in
+// G29 mode the bridge worker owns the live range.
+class RangeWatcher {
+public:
+    explicit RangeWatcher(std::function<void(int)> on_change)
+        : on_change_(std::move(on_change)),
+          stop_(CreateEventW(nullptr, TRUE, FALSE, nullptr)) {
+        if (stop_.valid()) thread_ = std::thread(&RangeWatcher::run, this);
+    }
+    ~RangeWatcher() {
+        if (stop_.valid()) SetEvent(stop_.get());
+        if (thread_.joinable()) thread_.join();
+    }
+    RangeWatcher(const RangeWatcher&) = delete;
+    RangeWatcher& operator=(const RangeWatcher&) = delete;
+
+private:
+    static std::optional<int> read_rotation(HKEY key) {
+        DWORD value{};
+        DWORD size = sizeof(value);
+        if (RegGetValueW(key, nullptr, L"Rotation", RRF_RT_REG_DWORD, nullptr, &value, &size) != ERROR_SUCCESS)
+            return std::nullopt;
+        const int degrees = static_cast<int>(value);
+        if (degrees == 180 || degrees == 360 || degrees == 540 || degrees == 900) return degrees;
+        return std::nullopt;
+    }
+    void run() {
+        int last_applied = 0;
+        while (WaitForSingleObject(stop_.get(), 0) != WAIT_OBJECT_0) {
+            HKEY key{};
+            if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\g25-driver", 0,
+                              KEY_NOTIFY | KEY_QUERY_VALUE, &key) != ERROR_SUCCESS) {
+                if (WaitForSingleObject(stop_.get(), 2000) == WAIT_OBJECT_0) return;
+                continue;
+            }
+            if (const auto degrees = read_rotation(key)) last_applied = *degrees;
+            UniqueHandle changed(CreateEventW(nullptr, FALSE, FALSE, nullptr));
+            bool reopen = false;
+            while (!reopen && WaitForSingleObject(stop_.get(), 0) != WAIT_OBJECT_0) {
+                if (RegNotifyChangeKeyValue(key, FALSE, REG_NOTIFY_CHANGE_LAST_SET,
+                                            changed.get(), TRUE) != ERROR_SUCCESS) {
+                    reopen = true;
+                    break;
+                }
+                const HANDLE handles[]{stop_.get(), changed.get()};
+                if (WaitForMultipleObjects(2, handles, FALSE, INFINITE) == WAIT_OBJECT_0) {
+                    RegCloseKey(key);
+                    return;
+                }
+                if (const auto degrees = read_rotation(key); degrees && *degrees != last_applied) {
+                    last_applied = *degrees;
+                    on_change_(*degrees);
+                }
+            }
+            RegCloseKey(key);
+        }
+    }
+
+    std::function<void(int)> on_change_;
+    UniqueHandle stop_;
+    std::thread thread_;
+};
+
 struct Hardware {
     DeviceInfo info;
     std::wstring g29_path;                  // non-empty => drive the virtual G29
+    // Taken lazily, only once the game actually plays an effect. Claiming it
+    // when the device is merely acquired would let any process that touches the
+    // wheel (Steam Input, a launcher) starve the game that is really driving it.
     std::unique_ptr<WriterLock> writer_lock;
     std::unique_ptr<HidTransport> transport;
     std::unique_ptr<OutputSession> output;
@@ -185,9 +255,10 @@ public:
         if (init->dwSize != sizeof(DIHIDFFINITINFO) || !init->pwszDeviceInterface)
             return E_INVALIDARG;
         shutdown();
+        const bool drive_g29 = is_virtual_g29_path(init->pwszDeviceInterface);
         try {
             auto hardware = std::make_unique<Hardware>();
-            if (is_virtual_g29_path(init->pwszDeviceInterface)) {
+            if (drive_g29) {
                 // Local game asking for FFB on our virtual G29. Drive its HID
                 // output; the bridge relays to the physical G25.
                 hardware->g29_path = init->pwszDeviceInterface;
@@ -206,9 +277,17 @@ public:
                 active_external_id_ = external_id;
                 quitting_ = false;
                 hardware_failed_ = false;
+                pending_range_.reset();
                 last_.fill(std::nullopt);
             }
             worker_ = std::thread(&EffectDriver::worker, this);
+            if (!drive_g29) {
+                range_watcher_ = std::make_unique<RangeWatcher>([this](int degrees) {
+                    std::lock_guard lock(mutex_);
+                    pending_range_ = degrees;
+                    wake_.notify_one();
+                });
+            }
             return S_OK;
         } catch (...) {
             shutdown();
@@ -587,6 +666,20 @@ private:
     void worker() noexcept {
         std::unique_lock lock(mutex_);
         while (!quitting_) {
+            // Live "Maximum rotation" change from the tray (SET_RANGE only, so
+            // running forces and wheel centre are undisturbed). Applied on this
+            // thread, which already owns the output endpoint.
+            if (pending_range_ && hardware_ && hardware_->transport && !hardware_failed_) {
+                const int degrees = *pending_range_;
+                pending_range_.reset();
+                auto* transport = hardware_->transport.get();
+                lock.unlock();
+                bool failed = false;
+                try { transport->send(set_range(degrees)); }
+                catch (...) { failed = true; }
+                lock.lock();
+                if (failed) hardware_failed_ = true;
+            }
             std::array<std::optional<Command>, 4> desired;
             build_commands(Clock::now(), desired);
             for (unsigned slot = 0; slot < desired.size() && !hardware_failed_; ++slot) {
@@ -609,6 +702,7 @@ private:
         }
     }
     void shutdown() noexcept {
+        range_watcher_.reset();   // joins the watcher thread before we tear down
         {
             std::lock_guard lock(mutex_);
             quitting_ = true;
@@ -634,6 +728,8 @@ private:
     std::mutex mutex_;
     std::condition_variable wake_;
     std::thread worker_;
+    std::unique_ptr<RangeWatcher> range_watcher_;
+    std::optional<int> pending_range_;   // guarded by mutex_; set by the watcher, applied by worker()
     std::unique_ptr<Hardware> hardware_;
     std::unordered_map<DWORD, Effect> effects_;
     std::array<std::optional<Command>, 4> last_{};

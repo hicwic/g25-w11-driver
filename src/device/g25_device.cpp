@@ -5,6 +5,11 @@
 #include <stdexcept>
 
 namespace g25 {
+namespace {
+// The one wheel-output mutex every g25 writer shares: g25tool, g25tray,
+// g25ff.dll and the bridge worker.
+constexpr wchar_t output_mutex_name[] = L"Local\\g25tool-output-v1";
+}
 DeviceInfo select_device(const std::vector<DeviceInfo>& devices, std::optional<std::size_t> index) {
     if (index) {
         if (*index >= devices.size()) throw std::runtime_error("device index not present; run g25tool list");
@@ -80,12 +85,24 @@ void print_inputs(const InputState& state, int assumed_range, bool raw, std::spa
     if (raw) std::cout << " | RX: " << hex_bytes(report);
     std::cout << '\n';
 }
-WriterLock::WriterLock() : handle_(CreateMutexW(nullptr, FALSE, L"Local\\g25tool-output-v1")) {
+WriterLock::WriterLock() : WriterLock(std::chrono::milliseconds{0}) {}
+WriterLock::WriterLock(std::chrono::milliseconds timeout)
+    : WriterLock(output_mutex_name, timeout) {}
+WriterLock::WriterLock(const wchar_t* mutex_name, std::chrono::milliseconds timeout)
+    : handle_(CreateMutexW(nullptr, FALSE, mutex_name)) {
     if (!handle_.valid()) throw std::runtime_error(windows_error("CreateMutex(output)", GetLastError()));
-    const auto result = WaitForSingleObject(handle_.get(), 0);
+    const auto result = WaitForSingleObject(handle_.get(), static_cast<DWORD>(timeout.count()));
     if (result != WAIT_OBJECT_0 && result != WAIT_ABANDONED)
         throw std::runtime_error("another g25tool writer is active; stop it before changing wheel output");
     if (result == WAIT_ABANDONED) std::clog << "Previous writer exited unexpectedly; resetting effects before use\n";
 }
 WriterLock::~WriterLock() { ReleaseMutex(handle_.get()); }
+bool WriterLock::available() noexcept {
+    UniqueHandle handle(CreateMutexW(nullptr, FALSE, output_mutex_name));
+    if (!handle.valid()) return false;
+    const auto result = WaitForSingleObject(handle.get(), 0);
+    const bool got = result == WAIT_OBJECT_0 || result == WAIT_ABANDONED;
+    if (got) ReleaseMutex(handle.get());
+    return got;
+}
 }

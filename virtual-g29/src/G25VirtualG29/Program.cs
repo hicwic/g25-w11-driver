@@ -57,6 +57,7 @@ static class Program
         Console.WriteLine("  --keep-existing         Do not purge stale virtual G29 devices before starting");
         Console.WriteLine("  --wheel-range <deg>     G25 rotation range at startup, default 900 (0 to skip)");
         Console.WriteLine("  --stop-event <name>     Named event a supervising service signals to stop cleanly");
+        Console.WriteLine("  --user-sid <sid>        Watch HKU\\<sid>\\Software\\g25-driver and apply Rotation changes live");
         Console.WriteLine("  --rate-hz <n>           Resubmit rate while the wheel is idle, default 250 (live input follows the wheel's own ~200 Hz)");
         Console.WriteLine("  --duration <seconds>    Stop automatically after N seconds");
         Console.WriteLine("  --install-driver        Allow HIDMaestro driver install/refresh before bridge");
@@ -232,6 +233,13 @@ static class Program
         Console.WriteLine($"Wheel range: {options.WheelRangeDegrees} deg");
         forceFeedback?.SendWheelInit(options.WheelRangeDegrees);
 
+        // Apply tray "Maximum rotation" changes live (SET_RANGE only) instead of
+        // needing a G29-mode restart. Only meaningful when we actually drive the
+        // wheel (forceFeedback != null) and the service told us whose tray to watch.
+        using var rangeWatcher = forceFeedback != null && !string.IsNullOrEmpty(options.UserSid)
+            ? TrayRangeWatcher.Start(options.UserSid!, options.WheelRangeDegrees, forceFeedback.SetRange, Shutdown.Token)
+            : null;
+
         if (forceFeedback != null || options.TraceOutput)
         {
             target.OutputReceived += (_, packet) =>
@@ -332,10 +340,21 @@ static class Program
             };
             using var p = Process.Start(psi);
             if (p == null) return;
-            var output = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(15000);
-            foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            // Both pipes must be drained concurrently: stderr is redirected, so
+            // leaving it unread while blocking on stdout would hang the bridge
+            // startup outright if PowerShell filled the stderr buffer.
+            var stdout = p.StandardOutput.ReadToEndAsync();
+            var stderr = p.StandardError.ReadToEndAsync();
+            if (!p.WaitForExit(15000))
+            {
+                try { p.Kill(entireProcessTree: true); } catch { }
+                Console.Error.WriteLine("Purging stale virtual wheels timed out.");
+                return;
+            }
+            foreach (var line in stdout.Result.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 Console.WriteLine("  " + line);
+            var errors = stderr.Result.Trim();
+            if (errors.Length > 0) Console.Error.WriteLine("  " + errors);
         }
         catch (Exception ex)
         {
@@ -442,6 +461,9 @@ static class Program
                     break;
                 case "--stop-event":
                     options.StopEventName = RequireValue(args, ref i, "--stop-event");
+                    break;
+                case "--user-sid":
+                    options.UserSid = RequireValue(args, ref i, "--user-sid");
                     break;
                 default: throw new ArgumentException($"Unknown option: {args[i]}");
             }

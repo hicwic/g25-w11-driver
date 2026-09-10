@@ -278,14 +278,17 @@ static class HidHide
         {
             using var p = Process.Start(psi);
             if (p == null) return (-1, "", $"could not start {exe}");
-            var so = p.StandardOutput.ReadToEnd();
-            var se = p.StandardError.ReadToEnd();
+            // Drain both pipes concurrently. Reading stdout to the end first
+            // leaves stderr unread, and a child that fills its ~4 KB stderr
+            // buffer then blocks forever - never reaching the timeout below.
+            var stdout = p.StandardOutput.ReadToEndAsync();
+            var stderr = p.StandardError.ReadToEndAsync();
             if (!p.WaitForExit(30_000))
             {
-                try { p.Kill(); } catch { }
-                return (-1, so, $"{exe} timed out");
+                try { p.Kill(entireProcessTree: true); } catch { }
+                return (-1, "", $"{exe} timed out");
             }
-            return (p.ExitCode, so, se);
+            return (p.ExitCode, stdout.Result, stderr.Result);
         }
         catch (Exception ex)
         {

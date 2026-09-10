@@ -7,6 +7,60 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+### Changed - "Maximum rotation" now changes live during a game (2026-09-09)
+
+Changing the tray's **Maximum rotation** used to be either impossible while a
+game ran ("G25 busy - setup pending" retry loop), or, if the tray did write, it
+sent `SET_RANGE` + `STOP_ALL` + `DISABLE_AUTOCENTER` mid-session and yanked the
+wheel off centre. In G29 mode it also **bounced the g25vg29 service**, dropping
+the virtual G29 mid-race. Now the change takes effect immediately, without
+restarting the game or G29 mode - useful for games with no in-game wheel range
+setting (Forza Horizon, Wreckfest, BeamNG).
+
+- The tray never writes to the wheel while another writer holds it
+  (`WriterLock::available()`); it just updates its status line.
+- The component that owns the G25 output watches `HKCU\Software\g25-driver`
+  (`RegNotifyChangeKeyValue`, no polling) and sends **SET_RANGE only** - no
+  stop-forces / autocenter reset - so the wheel stays centred and forces keep
+  flowing.
+  - Local DirectInput game: `g25ff.dll` runs the watcher on its FFB worker thread.
+  - G29 mode: the bridge worker runs it; the service passes the interactive
+    user's SID (`--user-sid`) so the SYSTEM worker can read `HKEY_USERS\<sid>`.
+- The G29-mode rotation change no longer bounces the service.
+- Tray status lines simplified: `G25 ready - <deg>`, `G25 in use - <deg>`,
+  `G29 mode active - <deg>` (no more "restart it for", "applying", "G25 hidden").
+
+### Fixed - G29 mode could be enabled with no G25 connected (2026-09-09)
+
+The tray let you tick "G29 Mode" with the wheel unplugged; the service then
+churned (worker can't find the G25, gives up after retries) without ever saying
+why. The "G29 Mode" item is now greyed - "G29 Mode (connect the G25 first)" -
+until a G25 is enumerable.
+
+### Fixed - robustness pass over the driver and the bridge (2026-09-09)
+
+A review of the whole codebase, not a bug report. Nothing here changes what the
+driver does; it removes ways it could misbehave.
+
+- `g25ff.dll` no longer writes a `TX [..]` line to `std::clog` for every force
+  feedback report. From inside a game that was an allocation and a stderr write
+  up to ~250 times a second, on the force feedback path, into a third-party
+  application's log. Report tracing is now opt-in and only `g25tool` asks for it.
+- Three places ran a child process and read its stdout to the end before
+  touching stderr (`HidHide`, `PurgeStaleVirtualWheels`, the service installer).
+  A child that filled its ~4 KB stderr buffer would then block forever, and the
+  `WaitForExit` timeout meant to bound it was never reached. `PurgeStaleVirtualWheels`
+  never read stderr at all. These run during bridge startup, where a hang leaves
+  G29 mode stuck in "Starting..." with no error.
+- The G25 reader and the force feedback writer let an exception raised while
+  `Dispose` closed the stream under them escape the thread, which would take the
+  worker process down. They now stop quietly, and `Dispose` releases what a
+  thread still uses only once it has really left.
+- The bridge's status pipe serves one snapshot per connection instead of holding
+  it open to stream changes nobody consumed.
+- The service's security descriptor granted the interactive user through two
+  overlapping entries; merged into one.
+
 ## [0.2.1] - 2026-09-08
 
 Local-game force feedback via the virtual G29, Forza Horizon 4 support, the

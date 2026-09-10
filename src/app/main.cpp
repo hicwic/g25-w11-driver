@@ -186,7 +186,8 @@ int run(const Options& options) {
     require_g25_writer(device, options.command == "native");
     if (options.command == "native" && device.pid == g25_pid) { std::cout << "Already in G25 mode; no reports sent.\n"; return 0; }
     WriterLock lock;
-    HidTransport transport(device, Access::write);
+    // The CLI is the diagnostic tool: echo every report it sends.
+    HidTransport transport(device, Access::write, Trace::transmit);
     if (stop.requested()) return 130;
     perform_output(transport, options, &stop);
     return stop.requested() ? 130 : 0;

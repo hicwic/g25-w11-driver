@@ -10,6 +10,13 @@
 #include <stdexcept>
 
 namespace g25 {
+namespace {
+// The wheel firmware accepts 40..900 degrees; both the SET_RANGE encoder and the
+// angle conversion reject anything else.
+void require_supported_range(int degrees) {
+    if (degrees < 40 || degrees > 900) throw std::invalid_argument("range must be 40..900 degrees");
+}
+}
 bool supported_pid(std::uint16_t pid) noexcept {
     return pid == dfex_pid || pid == dfp_pid || pid == g25_pid || pid == g27_pid;
 }
@@ -32,7 +39,7 @@ std::string mode_name(std::uint16_t pid) {
 }
 Command native_mode() { return {0xf8, 0x10, 0, 0, 0, 0, 0}; }
 Command set_range(int degrees) {
-    if (degrees < 40 || degrees > 900) throw std::invalid_argument("range must be 40..900 degrees");
+    require_supported_range(degrees);
     return {0xf8, 0x81, static_cast<std::uint8_t>(degrees & 0xff),
             static_cast<std::uint8_t>(degrees >> 8), 0, 0, 0};
 }
@@ -74,7 +81,7 @@ InputState decode_windows_input(std::span<const std::uint8_t> report) {
     return decode_native_payload(report.subspan(1));
 }
 double InputState::angle(int assumed_range) const {
-    (void)set_range(assumed_range);
+    require_supported_range(assumed_range);
     return (static_cast<double>(wheel) / 16383.0 - 0.5) * assumed_range;
 }
 double InputState::pedal_percent(std::uint8_t value) noexcept {

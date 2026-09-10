@@ -35,4 +35,7 @@ sealed record BridgeOptions
     public int WheelRangeDegrees { get; set; } = 900;
     // Named Windows event a supervising service signals for a clean stop.
     public string? StopEventName { get; set; }
+    // SID of the interactive user whose tray owns HKU\<sid>\Software\g25-driver.
+    // When set, the worker watches that key and applies "Rotation" changes live.
+    public string? UserSid { get; set; }
 }
