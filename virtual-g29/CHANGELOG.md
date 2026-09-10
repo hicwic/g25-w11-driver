@@ -37,6 +37,30 @@ churned (worker can't find the G25, gives up after retries) without ever saying
 why. The "G29 Mode" item is now greyed - "G29 Mode (connect the G25 first)" -
 until a G25 is enumerable.
 
+### Fixed - robustness pass over the driver and the bridge (2026-09-09)
+
+A review of the whole codebase, not a bug report. Nothing here changes what the
+driver does; it removes ways it could misbehave.
+
+- `g25ff.dll` no longer writes a `TX [..]` line to `std::clog` for every force
+  feedback report. From inside a game that was an allocation and a stderr write
+  up to ~250 times a second, on the force feedback path, into a third-party
+  application's log. Report tracing is now opt-in and only `g25tool` asks for it.
+- Three places ran a child process and read its stdout to the end before
+  touching stderr (`HidHide`, `PurgeStaleVirtualWheels`, the service installer).
+  A child that filled its ~4 KB stderr buffer would then block forever, and the
+  `WaitForExit` timeout meant to bound it was never reached. `PurgeStaleVirtualWheels`
+  never read stderr at all. These run during bridge startup, where a hang leaves
+  G29 mode stuck in "Starting..." with no error.
+- The G25 reader and the force feedback writer let an exception raised while
+  `Dispose` closed the stream under them escape the thread, which would take the
+  worker process down. They now stop quietly, and `Dispose` releases what a
+  thread still uses only once it has really left.
+- The bridge's status pipe serves one snapshot per connection instead of holding
+  it open to stream changes nobody consumed.
+- The service's security descriptor granted the interactive user through two
+  overlapping entries; merged into one.
+
 ## [0.2.1] - 2026-09-08
 
 Local-game force feedback via the virtual G29, Forza Horizon 4 support, the
