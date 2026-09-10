@@ -93,7 +93,7 @@ ApplyResult apply_to_wheel() {
         // off centre. The holder watches HKCU\Software\g25-driver and applies the
         // new range live (SET_RANGE only); we just reconcile once the game exits.
         if (!WriterLock::available()) {
-            status = L"G25 in use - " + std::to_wstring(settings.rotation) + L" deg";
+            status = label + L" in use - " + std::to_wstring(settings.rotation) + L" deg";
             pending_path.clear();
             return ApplyResult::retry_slow;
         }
