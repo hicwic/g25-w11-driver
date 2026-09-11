@@ -7,6 +7,12 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-11
+
+Fixes force feedback that could go silently dead in some games (found via
+Automobilista 2): a game turning actuators off then resetting the device
+expects the reset to turn them back on, per DirectInput's own spec.
+
 ### Fixed - no force feedback in Automobilista 2 (2026-09-11)
 
 `g25ff.dll` activated the hardware and received real, nonzero effect magnitudes
