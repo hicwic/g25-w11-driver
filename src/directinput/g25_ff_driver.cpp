@@ -317,8 +317,16 @@ public:
         if (!activate_locked()) return DIERR_INPUTLOST;
         switch (command) {
         case DISFFC_RESET:
+            // Per DirectInput: "the device is reset in the same manner as when
+            // it is first acquired" - that includes actuators back on. A game
+            // that sends SETACTUATORSOFF then RESET as a defensive clean-slate
+            // (Automobilista 2 does exactly this during its FFB setup) expects
+            // the reset to restore them; leaving actuators_ untouched here left
+            // every effect silently discarded by build_commands() for the rest
+            // of the session, with no visible error.
             effects_.clear();
             stopped_ = true; paused_ = false;
+            actuators_ = true;
             break;
         case DISFFC_STOPALL:
             for (auto& [handle, effect] : effects_) { (void)handle; effect.playing = false; }
