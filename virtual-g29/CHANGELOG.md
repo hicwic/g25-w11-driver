@@ -7,6 +7,21 @@ everything below `Unreleased` is prototype iteration.
 
 ## [Unreleased]
 
+### Fixed - no force feedback in Automobilista 2 (2026-09-11)
+
+`g25ff.dll` activated the hardware and received real, nonzero effect magnitudes
+from AMS2, yet never sent a single command to the wheel - a silent failure with
+no error anywhere.
+
+AMS2 sends `SETACTUATORSOFF` then `RESET` during its FFB setup, expecting the
+reset to restore actuators per the DirectInput spec ("the device is reset in
+the same manner as when it is first acquired"). Our `DISFFC_RESET` handler
+cleared effects but left `actuators_` untouched, so once off it stayed off for
+the rest of the session and `build_commands()` discarded everything from its
+very first line. Other titles tested so far never send `SETACTUATORSOFF`, so
+this was latent rather than a regression. `DISFFC_RESET` now also restores
+`actuators_ = true`.
+
 ## [0.2.2] - 2026-09-10
 
 Tray "Maximum rotation" now applies live while a game runs - locally and in
